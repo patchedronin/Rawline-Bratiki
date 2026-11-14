@@ -97,22 +97,22 @@ class MobileDockGlass(private val corner: Float, private val discY: Float, priva
         val light = MobilePalette.light
         val pastel = MobileStyle.pastel
         val high = centreY - radius
+        // Pastel's rows and cards are one solid plate (MobilePalette.shape): the dock is the same plate, not a glass of its own.
+        val plate = if (light) Color.WHITE else Color.rgb(42, 36, 62)
         val topColor = when {
-            pastel && light -> Color.argb(248, 255, 255, 255)
-            pastel -> Color.argb(236, 54, 46, 82)
+            pastel -> plate
             light -> Color.argb(205, 255, 255, 255)
             else -> Color.argb(22, 255, 255, 255)
         }
         val bottomColor = when {
-            pastel && light -> Color.argb(242, 255, 250, 252)
-            pastel -> Color.argb(230, 36, 40, 70)
+            pastel -> plate
             light -> Color.argb(160, 248, 248, 250)
             else -> Color.argb(9, 255, 255, 255)
         }
         body = LinearGradient(0f, high, 0f, bottom, topColor, bottomColor, Shader.TileMode.CLAMP)
         val line = if (pastel) Color.WHITE else if (light) Color.BLACK else Color.WHITE
-        val rimTop = if (pastel) if (light) 200 else 56 else if (light) 24 else 44
-        val rimBottom = if (pastel) if (light) 70 else 24 else if (light) 12 else 14
+        val rimTop = if (pastel) 0 else if (light) 24 else 44
+        val rimBottom = if (pastel) 0 else if (light) 12 else 14
         rim = LinearGradient(0f, high, 0f, bottom, ColorUtils.setAlphaComponent(line, rimTop), ColorUtils.setAlphaComponent(line, rimBottom), Shader.TileMode.CLAMP)
     }
 

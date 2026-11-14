@@ -178,7 +178,9 @@ class MobileOrbArtwork(context: Context, private val idleText: String) : MobileP
         // A smaller button keeps its lines inside it, at the same proportions whatever the state: the caption and the
         // time take 51 dp under the disc, the subscription and server line 19 more.
         val withServer = serverText.isNotEmpty() || groupText.isNotEmpty()
-        val fit = ((bounds.bottom - cy - rest) / ((if (withServer) 70f else 51f) * density)).coerceIn(.6f, 1f)
+        // The subscription above the server takes a second line (about 17 dp): counted here, or the room the button grew
+        // by for it scaled the text back up and the second line ran past the bottom.
+        val fit = ((bounds.bottom - cy - rest) / ((if (withServer) 70f + (serverLines - 1) * 17f else 51f) * density)).coerceIn(.6f, 1f)
         val top = cy + rest + 22f * density * fit
         val wide = (if (textRoom > 0f) minOf(textRoom, bounds.width().toFloat()) else bounds.width().toFloat()) * .94f
         fun line(text: String, size: Float, y: Float) {
