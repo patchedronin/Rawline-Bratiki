@@ -471,8 +471,9 @@ class MobileLayoutEditorActivity : ServerScreenActivity() {
         fingerY = y
         grabY = y - boundsOf(frame).top
         frame.rotation = 0f
-        // Carried over the list, the part covers it instead of mixing with it.
-        frame.background = GradientDrawable().apply { setColor(MobilePalette.background); cornerRadius = dp(MobilePalette.rowDp + 4).toFloat() }
+        // The part keeps its own see-through glass while carried; an opaque plate darkened it and hid the parts it passed.
+        // A drop still settling ends now, so no other outline is left off its place over this one.
+        parts.values.forEach { other -> other.animate().cancel(); other.translationY = 0f; other.scaleX = 1f; other.scaleY = 1f; other.translationZ = 0f }
         frame.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         frame.animate().scaleX(1.03f).scaleY(1.03f).translationZ(dp(8).toFloat()).setDuration(120).start()
     }
@@ -511,7 +512,7 @@ class MobileLayoutEditorActivity : ServerScreenActivity() {
     private fun drop() {
         val frame = dragged?.let(parts::getValue) ?: return
         dragged = null
-        frame.animate().translationY(0f).scaleX(1f).scaleY(1f).translationZ(0f).setDuration(160).withEndAction { frame.background = null }.start()
+        frame.animate().translationY(0f).scaleX(1f).scaleY(1f).translationZ(0f).setDuration(160).start()
     }
 
     /** The whole screen at its own shape and orientation, scaled to the room there is; every touch lands here. */
