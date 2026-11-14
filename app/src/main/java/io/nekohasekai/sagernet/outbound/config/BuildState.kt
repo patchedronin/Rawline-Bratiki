@@ -20,6 +20,8 @@ internal object Tags {
     const val DNS_FAKE = "dns-fake"
     const val DNS_HOSTS = "dns-hosts"
     const val DNS_ECH_PREFIX = "dns-ech"
+    /** The servers of the user's DNS rules: `dns-user-<index>`. */
+    const val DNS_USER_PREFIX = "dns-user"
     /** Per-chain clones of dns-remote dialed through a route outbound: `dns-remote-<chain tag>`. */
     const val DNS_REMOTE_CHAIN_PREFIX = "dns-remote-"
 
@@ -83,6 +85,9 @@ internal class Prerequisites {
 
     /** The direct / proxy rules that depend on the network, in rule order: (DNS server tag, network conditions, sites). */
     val conditionalDns = ArrayList<Triple<String, JsonObject, DomainSelectors>>()
+
+    /** The user's DNS rules that can be used, with their sites; the catalog lists are in [ruleSets]. */
+    val userDns = ArrayList<Pair<DnsRule, DomainSelectors>>()
 
     /** The `ip:` values of the route -> direct rules; they bypass the tun only with enable_tun_routing. */
     val directIpCidrs = ArrayList<String>()

@@ -259,6 +259,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var dnsReverseMapping by SettingsRegistry.DNS_REVERSE_MAPPING
     var useDnsObject by SettingsRegistry.USE_DNS_OBJECT
     var dnsObject by SettingsRegistry.DNS_OBJECT
+    var dnsRules by SettingsRegistry.DNS_RULES
 
     // presets
     var muxProtocol by SettingsRegistry.MUX_PROTOCOL

@@ -95,6 +95,8 @@ data class GeneratorSettings(
     val dnsReverseMapping: Boolean = false,
     /** dns_object: the raw dns section used when BuildContext.useDnsObject is set without routeOwnsDns (not in tests). */
     val dnsObject: String = "",
+    /** The user's DNS rules (DnsRules), ahead of the routing profile's site lists. */
+    val dnsRules: List<DnsRule> = emptyList(),
     /** dns_final_out: "remote" or "direct". */
     val dnsFinalOut: String = "remote",
     val dnsOptimistic: Boolean = true,

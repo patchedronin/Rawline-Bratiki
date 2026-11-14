@@ -239,6 +239,8 @@ object SettingsRegistry {
     @JvmField val DNS_REVERSE_MAPPING = bool("dns_reverse_mapping", false)
     @JvmField val USE_DNS_OBJECT = bool("use_dns_object", false)
     @JvmField val DNS_OBJECT = string("dns_object", "")
+    /** DnsRules.encode: sites that resolve through a server of their own. */
+    @JvmField val DNS_RULES = string("dns_rules", "")
 
     // ------------------------------------------------------------------------------------------------ presets
 

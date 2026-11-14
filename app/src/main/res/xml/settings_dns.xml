@@ -45,6 +45,10 @@
     <PreferenceCategory
         app:key="dnsBehaviour"
         app:title="@string/cag_behaviour">
+        <Preference
+            app:icon="@drawable/ic_action_dns"
+            app:key="dnsRules"
+            app:persistent="false" />
         <SwitchPreference
             app:icon="@drawable/ic_baseline_camera_24"
             app:key="enable_dns_routing"

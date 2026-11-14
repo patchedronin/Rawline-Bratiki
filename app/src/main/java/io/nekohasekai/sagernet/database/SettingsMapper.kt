@@ -105,6 +105,7 @@ object SettingsMapper {
             dnsPersistCache = DataStore.dnsPersistCache,
             dnsReverseMapping = DataStore.dnsReverseMapping,
             dnsObject = DataStore.dnsObject,
+            dnsRules = app.rawline.mobile.outbound.config.DnsRules.decode(DataStore.dnsRules),
             dnsFinalOut = routeDns.dnsFinalOut,
             dnsOptimistic = DataStore.dnsOptimistic,
             dnsOptimisticTimeout = DataStore.dnsOptimisticTimeout,

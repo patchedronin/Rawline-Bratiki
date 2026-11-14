@@ -677,7 +677,7 @@ class MainActivity : ThemedActivity(),
             Key.SERVICE_MODE -> onBinderDied()
             // The JSON editors of custom_inbound and dns_object write here from their own activity.
             Key.PROXY_APPS, Key.BYPASS_MODE, Key.INDIVIDUAL,
-            SettingsRegistry.CUSTOM_INBOUND.key, SettingsRegistry.DNS_OBJECT.key -> {
+            SettingsRegistry.CUSTOM_INBOUND.key, SettingsRegistry.DNS_OBJECT.key, SettingsRegistry.DNS_RULES.key -> {
                 if (DataStore.serviceState.canStop) {
                     snackbar(getString(R.string.need_reload)).setAction(R.string.apply) {
                         SagerNet.reloadService()

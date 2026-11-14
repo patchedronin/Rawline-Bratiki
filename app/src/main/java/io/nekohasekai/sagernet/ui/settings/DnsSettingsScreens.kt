@@ -27,6 +27,14 @@ import moe.matsuri.nb4a.ui.EditConfigPreference
 class DnsSettingsFragment : SettingsScreenFragment(R.xml.settings_dns) {
 
     override fun bind() {
+        pref<Preference>("dnsRules").apply {
+            title = "DNS-правила"
+            summary = DnsRulesEditor.summary()
+            setOnPreferenceClickListener {
+                DnsRulesEditor.show(requireContext()) { summary = DnsRulesEditor.summary(); needReload() }
+                true
+            }
+        }
         // dialog_manage_routes.cpp's server rules.
         val server: Rule = { DnsServers.parseDnsAddress(it).why }
         gateText(SettingsRegistry.REMOTE_DNS.key, server, invalid = R.string.invalid_dns_address) { it.isNotEmpty() }

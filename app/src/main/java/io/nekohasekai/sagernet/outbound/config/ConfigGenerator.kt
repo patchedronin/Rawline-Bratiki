@@ -236,6 +236,7 @@ class ConfigGenerator @JvmOverloads constructor(
 
         collectRuleSets(state, route)
         if (state.failed) return
+        if (!state.forTest) collectUserDns(state)
 
         if (settings.enableDnsRouting) {
             val directSites = route.directSites()
@@ -364,6 +365,29 @@ class ConfigGenerator @JvmOverloads constructor(
                 }
                 sets[tag] = RuleSets.mirrorLink(listed, settings.rulesetMirror)
             }
+        }
+    }
+
+    /**
+     * The user's DNS rules. One the editor would refuse (a typo stored by an older version, a server it cannot read)
+     * is left out rather than stopping the connection, and so is a catalog list it does not know.
+     */
+    private fun collectUserDns(state: BuildState) {
+        val pre = state.prerequisites
+        for (rule in settings.dnsRules) {
+            if (!rule.enabled || rule.problem().isNotEmpty()) continue
+            val match = DnsRules.parse(rule.sites)
+            val selectors = DomainSelectors()
+            match.domains.forEach { selectors.domains.add(it) }
+            match.suffixes.forEach { selectors.suffixes.add(it) }
+            match.keywords.forEach { selectors.keywords.add(it) }
+            match.regexes.forEach { selectors.regexes.add(it) }
+            for (name in match.ruleSets) {
+                val url = routing.catalog.urlOf(name) ?: continue
+                if (!pre.ruleSets.containsKey(name)) pre.ruleSets[name] = RuleSets.mirrorLink(url, settings.rulesetMirror)
+                selectors.ruleSets.add(name)
+            }
+            if (selectors.hasInlineConditions() || selectors.ruleSets.isNotEmpty()) pre.userDns.add(rule to selectors)
         }
     }
 
@@ -1051,6 +1075,22 @@ class ConfigGenerator @JvmOverloads constructor(
 
         // Below the fakeip rule, which keeps answering A / AAAA for these sites as on the desktop (R6 В§3.5).
         val pre = state.prerequisites
+        // The user's DNS rules first: a site named there resolves through its server whatever the profile's lists say.
+        if (!state.forTest) for ((index, entry) in pre.userDns.withIndex()) {
+            val (rule, selectors) = entry
+            val tag = hopTag(Tags.DNS_USER_PREFIX, index)
+            var server = DnsServers.buildDnsObj(rule.server)
+            val type = server.string("type")
+            val viaProxy = !rule.direct && type !in listOf("local", "dhcp")
+            // Through Xray a resolver cannot use udp or quic, as for dns-remote.
+            if (viaProxy && state.proxyUsesXray && (type == "udp" || type == "quic"))
+                server = DnsServers.buildDnsObj(DnsServers.upgradeUdpDnsToDoH(server.string("server")))
+            server["tag"] = tag
+            if (type != "local" && type != "dhcp") server["domain_resolver"] = Tags.DNS_LOCAL
+            if (viaProxy) server["detour"] = state.sstpDnsTag.ifEmpty { Tags.PROXY }
+            servers.add(server)
+            appendDnsRoutingRules(rules, selectors, tag, if (rule.direct) buildContext.directDnsDisableIpv6 else settings.remoteDnsDisableIpv6)
+        }
         // App rules resolve through the chain their connections take (collectPerAppDns): a connection's own
         // resolver query skips the fakeip rule anyway (dns/router.go:309), so sitting behind it routes the real
         // answer per chain while the apps keep answering fakeip exactly as before. Ahead of the site lists, so
