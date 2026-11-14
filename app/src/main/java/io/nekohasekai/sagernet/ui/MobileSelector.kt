@@ -45,6 +45,9 @@ object MobileSelector {
         }
         list.background = background
         list.clipToOutline = true
+        // A rounded pill inside the rounded list, as the menus light their rows; the stock selector is a square.
+        list.selector = androidx.core.content.ContextCompat.getDrawable(anchor.context, app.rawline.mobile.R.drawable.bg_popup_item)
+        list.setDrawSelectorOnTop(false)
         val popup = PopupWindow(list, minOf((anchor.width - dp(24)).coerceAtLeast(dp(120)), dp(300)), minOf(labels.size,4) * dp(48) + dp(20), true).apply {
             setBackgroundDrawable(background)
             elevation = dp(8).toFloat()

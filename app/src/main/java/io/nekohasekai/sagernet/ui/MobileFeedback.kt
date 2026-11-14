@@ -30,10 +30,16 @@ object MobileFeedback {
     }
     fun apply(view: View, radius: Float = MobilePalette.rowDp.toFloat(), circle: Boolean = false, white: Boolean = false) {
         if(view.background is RippleDrawable) return
+        // The ripple takes the control's own shape when its background has one, not the row's radius for all.
+        val own=view.background
         val mask=GradientDrawable().apply {
             setColor(Color.WHITE)
-            if(circle) shape=GradientDrawable.OVAL
-            else cornerRadius=radius*view.resources.displayMetrics.density
+            when {
+                circle || (own is GradientDrawable && own.shape==GradientDrawable.OVAL) -> shape=GradientDrawable.OVAL
+                own is MobileGlass -> cornerRadius=own.radius
+                own is GradientDrawable && android.os.Build.VERSION.SDK_INT>=24 -> own.cornerRadii?.let { cornerRadii=it } ?: run { cornerRadius=own.cornerRadius }
+                else -> cornerRadius=radius*view.resources.displayMetrics.density
+            }
         }
         val colour=if(MobilePalette.light && !white) Color.argb(28,0,0,0) else Color.argb(56,255,255,255)
         view.background=RippleDrawable(ColorStateList.valueOf(colour),view.background,mask)

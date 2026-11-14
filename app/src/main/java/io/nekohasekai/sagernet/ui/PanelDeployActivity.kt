@@ -88,7 +88,6 @@ class PanelDeployActivity : ServerScreenActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        window.setBackgroundDrawable(if (MobileStyle.pastel) MobileHomeBackdrop() else android.graphics.drawable.ColorDrawable(MobilePalette.background))
         val root = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL; setBackgroundColor(MobilePalette.screen) }
         toolbar = Toolbar(this).apply { setTitleTextColor(MobilePalette.text); setNavigationIcon(R.drawable.baseline_arrow_back_24); setNavigationOnClickListener { back() } }
         content = FrameLayout(this)

@@ -5,7 +5,7 @@ import android.graphics.drawable.Drawable
 import androidx.core.graphics.ColorUtils
 
 /** The new style's surface: a translucent body, a little lighter at the top, and one thin even rim. */
-class MobileGlass(private val radius: Float, private val tint: Int? = null) : Drawable() {
+class MobileGlass(val radius: Float, private val tint: Int? = null) : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val box = RectF()
     private var corner = 0f

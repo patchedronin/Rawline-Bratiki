@@ -49,6 +49,8 @@
         <item name="actionOverflowMenuStyle">@style/Widget.SagerNet.PopupMenu.Overflow</item>
         <item name="dropDownListViewStyle">@style/Widget.SagerNet.DropDownList</item>
         <item name="android:dropDownListViewStyle">@style/Widget.SagerNet.DropDownList</item>
+        <!-- The menu's own rounded row highlight (bg_popup_item) only: the platform's square ripple drew over it. -->
+        <item name="android:itemBackground">@android:color/transparent</item>
         <item name="bottomSheetDialogTheme">@style/ThemeOverlay.SagerNet.BottomSheetDialog</item>
         <item name="materialButtonStyle">@style/Widget.SagerNet.Button</item>
         <item name="textAppearanceButton">@style/TextAppearance.SagerNet.Button</item>
@@ -107,6 +109,8 @@
         <item name="actionOverflowMenuStyle">@style/Widget.SagerNet.PopupMenu.Overflow</item>
         <item name="dropDownListViewStyle">@style/Widget.SagerNet.DropDownList</item>
         <item name="android:dropDownListViewStyle">@style/Widget.SagerNet.DropDownList</item>
+        <!-- The menu's own rounded row highlight (bg_popup_item) only: the platform's square ripple drew over it. -->
+        <item name="android:itemBackground">@android:color/transparent</item>
         <item name="bottomSheetDialogTheme">@style/ThemeOverlay.SagerNet.BottomSheetDialog</item>
         <item name="materialButtonStyle">@style/Widget.SagerNet.Button</item>
         <item name="textAppearanceButton">@style/TextAppearance.SagerNet.Button</item>
