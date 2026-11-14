@@ -30,6 +30,8 @@ import java.util.concurrent.Executors
  * lists and the system HTTP proxy switch and bypass list.
  */
 object SettingsMapper {
+    /** Before Android 14 the roots change only with a firmware update; from 14 they come with Google Play. */
+    const val MOZILLA_ROOTS_BELOW_SDK = 34
 
     /**
      * [profile] (by default that of current_route_id, the first profile when it is gone), the rule-set list, the
@@ -62,8 +64,9 @@ object SettingsMapper {
             ntpServerPort = DataStore.ntpServerPort,
             ntpInterval = DataStore.ntpInterval,
             ntpOutbound = DataStore.ntpOutbound,
-            // Android 7 has no roots for today's certificates, so DNS over HTTPS failed before anything connected.
-            useMozillaCerts = DataStore.useMozillaCerts || android.os.Build.VERSION.SDK_INT < 26,
+            // Android before 14 keeps the roots of its firmware: DNS over HTTPS through the tunnel failed on 8.0 with
+            // "certificate signed by unknown authority", so nothing resolved. The core's Mozilla roots are current.
+            useMozillaCerts = DataStore.useMozillaCerts || android.os.Build.VERSION.SDK_INT < MOZILLA_ROOTS_BELOW_SDK,
             dnsInPort = DataStore.coreDnsInPort,
             inboundAddress = DataStore.inboundAddress.ifBlank { SettingsRegistry.LOOPBACK_ADDRESS },
             mixedPort = DataStore.inboundSocksPort,

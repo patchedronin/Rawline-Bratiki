@@ -286,8 +286,15 @@ open class GroupSettingsActivity : ServerScreenActivity(R.layout.layout_config_s
         return true
     }
 
-    /** Only the apply mark saves; closing leaves a group as it was and drops a new one. */
-    private fun close() = finish()
+    /** Closing with changes asks first; without them it leaves a group as it was and drops a new one. */
+    private fun close() {
+        if (!loaded || !DataStore.dirty) { finish(); return }
+        MobileAlertDialogBuilder(this).setTitle(R.string.unsaved_changes_prompt)
+            .setPositiveButton(R.string.save) { _, _ -> lifecycleScope.launch { save() } }
+            .setNegativeButton(R.string.discard) { _, _ -> finish() }
+            .setNeutralButton(android.R.string.cancel, null)
+            .show()
+    }
 
     @Suppress("DEPRECATION")
     private fun createEditorSheet() {

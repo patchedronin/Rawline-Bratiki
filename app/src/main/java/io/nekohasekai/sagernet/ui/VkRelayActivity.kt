@@ -151,14 +151,17 @@ class VkRelayActivity : ThemedActivity() {
             // The deploy first, then the modes of new profiles, then the VK / MAX bindings and the call hashes.
             val deploy = PreferenceCategory(requireContext()).apply { title = "Управление серверами" }
             preferenceScreen.addPreference(deploy)
-            deploy.addPreference(Preference(requireContext()).apply {
-                title = "Деплой";summary = "WDTT Panel и нода на вашем VPS"
-                setIcon(R.drawable.ic_mobile_server);widgetLayoutResource=R.layout.qmobile_preference_arrow
+            // The panel installer, then each protocol's own deploy as before it.
+            for(kind in listOf("panel","mrtt","qwdtt","csqtt","wdttplus","freeturn")) deploy.addPreference(Preference(requireContext()).apply {
+                title = if(kind=="panel") "Деплой WDTT Panel" else "Деплой " + DeployActivity.title(kind)
+                if(kind=="panel") summary = "WDTT Panel и нода на вашем VPS"
+                setIcon(if(kind=="panel") R.drawable.ic_mobile_server else R.drawable.ic_mobile_core);widgetLayoutResource=R.layout.qmobile_preference_arrow
                 fragment=DeployListFragment::class.java.name
+                extras.putString("kind",kind)
                 // Outside the settings this screen has its own window: the list opens in it.
                 setOnPreferenceClickListener {
                     if(parentFragment is SettingsFragment) false else {
-                        parentFragmentManager.beginTransaction().replace((requireView().parent as android.view.View).id,DeployListFragment()).addToBackStack(null).commit();true
+                        parentFragmentManager.beginTransaction().replace((requireView().parent as android.view.View).id,DeployListFragment().apply { arguments=Bundle().apply { putString("kind",kind) } }).addToBackStack(null).commit();true
                     }
                 }
             })

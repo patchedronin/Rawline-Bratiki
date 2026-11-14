@@ -135,11 +135,30 @@ object MobileFocusRing {
         window.decorView.viewTreeObserver.addOnGlobalFocusChangeListener { old, now ->
             old?.foreground = null
             if (now == null || now.isInTouchMode || now.background is MobilePowerArtwork || now is android.widget.EditText) return@addOnGlobalFocusChangeListener
+            // A list that takes the focus itself (its rows not loaded yet) ringed the whole screen, and the remote's
+            // arrows searched past it: the focus goes on to its first row, now or once the rows are there.
+            if (isList(now)) { now.post { enterList(now as android.view.ViewGroup) }; return@addOnGlobalFocusChangeListener }
             val density = now.resources.displayMetrics.density
             now.foreground = android.graphics.drawable.GradientDrawable().apply {
                 cornerRadius = MobilePalette.rowDp * density
                 setStroke((2 * density).toInt(), MobilePalette.text)
             }
         }
+    }
+
+    fun isList(view: android.view.View) = view is androidx.recyclerview.widget.RecyclerView || view is android.widget.ScrollView ||
+        view is androidx.core.widget.NestedScrollView || view is android.widget.AbsListView
+
+    private fun enterList(list: android.view.ViewGroup) {
+        fun enter(): Boolean {
+            if (!list.isFocused) return true
+            val found = ArrayList<android.view.View>()
+            list.addFocusables(found, android.view.View.FOCUS_DOWN)
+            return found.firstOrNull { it !== list }?.requestFocus() == true
+        }
+        if (enter()) return
+        list.viewTreeObserver.addOnGlobalLayoutListener(object : android.view.ViewTreeObserver.OnGlobalLayoutListener {
+            override fun onGlobalLayout() { if (enter()) list.viewTreeObserver.removeOnGlobalLayoutListener(this) }
+        })
     }
 }

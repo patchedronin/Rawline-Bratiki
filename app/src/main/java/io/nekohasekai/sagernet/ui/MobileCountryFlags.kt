@@ -14,15 +14,11 @@ object MobileCountryFlags {
         }.getOrNull()
     }
 
-    private val leadingFlag = Regex("^(?:[\\x{1F1E6}-\\x{1F1FF}]{2}|[\\x{1F3F3}\\x{1F3F4}\\x{1F6A9}\\x{1F38C}\\x{2690}\\x{2691}]\\x{FE0F}?(?:\\x{200D}[^\\s]+|[\\x{E0061}-\\x{E007F}]+)?)")
+    // A ZWJ sequence takes only symbols after the joiner, so a flag inside a name never swallows the word after it.
+    private val anyFlag = Regex("[\\x{1F1E6}-\\x{1F1FF}]{2}|[\\x{1F3F3}\\x{1F3F4}\\x{1F6A9}\\x{1F38C}\\x{2690}\\x{2691}]\\x{FE0F}?(?:(?:\\x{200D}\\p{So}\\x{FE0F}?)+|[\\x{E0061}-\\x{E007F}]+)?")
 
-    /** The flag a profile name starts with, country or not (white, pirate, rainbow), "" without one. */
-    fun leading(name: String): String = leadingFlag.find(name)?.value.orEmpty()
-
-    private val leadingCountryFlag = Regex("^[\\x{1F1E6}-\\x{1F1FF}]{2}")
-
-    /** A country flag a profile name starts with (two regional indicators), "" for any other start. */
-    fun leadingCountry(name: String): String = leadingCountryFlag.find(name)?.value.orEmpty()
+    /** The first flag anywhere in a profile name, country or not (white, pirate, rainbow), with where it stands. */
+    fun first(name: String): MatchResult? = anyFlag.find(name)
 
     /** A flag with no picture of its own, drawn by the system's emoji font. */
     fun emoji(context: Context, flag: String): Bitmap = images.getOrPut("emoji:$flag") {

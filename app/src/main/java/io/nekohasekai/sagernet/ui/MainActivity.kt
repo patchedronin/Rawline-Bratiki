@@ -124,7 +124,6 @@ class MainActivity : ThemedActivity(),
         // The home screen has its own menus: the side menu stays closed.
         binding.drawerLayout.setDrawerLockMode(DrawerLayout.LOCK_MODE_LOCKED_CLOSED)
         navigation.visibility = View.GONE
-        lifecycleScope.launch { repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) { SubscriptionCountries.follow(this).join() } }
         supportFragmentManager.addOnBackStackChangedListener {
             currentMainFragment = supportFragmentManager.findFragmentById(R.id.fragment_holder) as? ToolbarFragment
         }

@@ -100,6 +100,8 @@ internal class MobileReorder(
         ids[item]=id
         handle.setOnLongClickListener {
             if(source!=null) return@setOnLongClickListener true
+            // A remote or keyboard has no drag: holding OK picks the item up, the arrows move it, OK or Back puts it down.
+            if(!handle.isInTouchMode) { keyMove(handle,item); return@setOnLongClickListener true }
             original=children()
             source=item;accepted=false;transferred=false
             handle.parent.requestDisallowInterceptTouchEvent(true)
@@ -134,6 +136,52 @@ internal class MobileReorder(
             }.start()
             true
         }
+    }
+
+    private fun keyMove(handle: View, item: View) {
+        original=children()
+        source=item;accepted=false;transferred=false
+        active(true)
+        prepare(item)
+        item.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
+        item.animate().scaleX(heldScale).scaleY(heldScale).setDuration(90).start()
+        item.alpha=.7f
+        // The release of the press that picked the item up comes here too: only a new press puts it down.
+        var pressed=false
+        handle.setOnKeyListener { _,code,event ->
+            if(source!==item) return@setOnKeyListener false
+            val back=if(horizontal) android.view.KeyEvent.KEYCODE_DPAD_LEFT else android.view.KeyEvent.KEYCODE_DPAD_UP
+            val ahead=if(horizontal) android.view.KeyEvent.KEYCODE_DPAD_RIGHT else android.view.KeyEvent.KEYCODE_DPAD_DOWN
+            when(code) {
+                back,ahead -> {
+                    if(event.action==android.view.KeyEvent.ACTION_DOWN) keyStep(handle,item,if(code==back) -1 else 1)
+                    true
+                }
+                android.view.KeyEvent.KEYCODE_DPAD_CENTER,android.view.KeyEvent.KEYCODE_ENTER,android.view.KeyEvent.KEYCODE_BACK -> {
+                    // On the release, so the press that ends the move opens nothing.
+                    if(event.action==android.view.KeyEvent.ACTION_DOWN) pressed=true
+                    else if(pressed || code==android.view.KeyEvent.KEYCODE_BACK) { handle.setOnKeyListener(null);item.alpha=1f;finish(true) }
+                    true
+                }
+                // The other neighbours (the other column, the toolbar) stay out of reach until the item is put down.
+                android.view.KeyEvent.KEYCODE_DPAD_UP,android.view.KeyEvent.KEYCODE_DPAD_DOWN,
+                android.view.KeyEvent.KEYCODE_DPAD_LEFT,android.view.KeyEvent.KEYCODE_DPAD_RIGHT -> true
+                else -> false
+            }
+        }
+    }
+
+    private fun keyStep(handle: View, item: View, step: Int) {
+        val list=children()
+        val neighbour=list.getOrNull(list.indexOf(item)+step) ?: return
+        val first=ids[item] ?: return
+        val second=ids[neighbour] ?: return
+        if(!compatible(first,second)) return
+        container.removeView(item)
+        container.addView(item,container.indexOfChild(neighbour)+(if(step>0) 1 else 0))
+        handle.requestFocus()
+        // The list follows the moved item.
+        item.post { item.requestRectangleOnScreen(android.graphics.Rect(0,0,item.width,item.height)) }
     }
 
     private fun children()=(0 until container.childCount).map { container.getChildAt(it) }.filter { it!==insertionMarker }

@@ -226,6 +226,8 @@ class AppManagerActivity : ThemedActivity() {
         return (listed + extraSelected).distinct().joinToString("\n")
     }
 
+    override fun onSupportNavigateUp(): Boolean { onBackPressedDispatcher.onBackPressed(); return true }
+
     private fun dirty() = mode != storedMode || storedSelection.let { it != null && it != selectionText() }
 
     private fun selectionChanged() = invalidateOptionsMenu()
@@ -288,6 +290,17 @@ class AppManagerActivity : ThemedActivity() {
             setDisplayHomeAsUpEnabled(true)
             setHomeAsUpIndicator(R.drawable.ic_navigation_close)
         }
+        // Leaving with changes asks, as the profile editors do: the tick alone was easy to miss.
+        onBackPressedDispatcher.addCallback(this, object : androidx.activity.OnBackPressedCallback(true) {
+            override fun handleOnBackPressed() {
+                if (!dirty()) { finish(); return }
+                MobileAlertDialogBuilder(this@AppManagerActivity).setTitle(R.string.unsaved_changes_prompt)
+                    .setPositiveButton(R.string.save) { _, _ -> save() }
+                    .setNegativeButton(R.string.discard) { _, _ -> finish() }
+                    .setNeutralButton(android.R.string.cancel, null)
+                    .show()
+            }
+        })
 
         storedMode = if (!DataStore.proxyApps) 0 else if (DataStore.bypass) 2 else 1
         mode = savedInstanceState?.getInt("mode", storedMode) ?: storedMode

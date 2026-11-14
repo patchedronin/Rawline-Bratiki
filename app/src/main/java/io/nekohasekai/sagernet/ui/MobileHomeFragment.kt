@@ -418,8 +418,7 @@ class MobileHomeFragment : ToolbarFragment() {
             button.isEnabled=!updating; button.showUpdating(updating)
         }
     }
-    /** The server's country flag, any flag at the start of its name, or a globe. */
-    /** The server's country from the tests' IP lookup first, then a flag the name starts with. */
+    /** The first flag in the server's name, or a globe. */
     /** No word broken across lines in a narrow box: the text shrinks, to 9 sp at the least, until its longest word fits. */
     private fun fitWords(view: TextView, size: Float) {
         fun fit() {
@@ -434,21 +433,18 @@ class MobileHomeFragment : ToolbarFragment() {
         view.addOnLayoutChangeListener { _,_,_,_,_,_,_,_,_ -> fit() }
         view.addTextChangedListener(object : android.text.TextWatcher { override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}; override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}; override fun afterTextChanged(s: android.text.Editable?) = fit() })
     }
-    private fun flagBadge(displayName: String, geoCountry: String? = null): ImageView {
-        val geo=geoCountry?.trim()?.lowercase(java.util.Locale.ROOT)?.takeIf { it.length==2 && it.all { c -> c in 'a'..'z' } }
-            ?.let { code -> MobileCountryFlags.bitmap(requireContext(),code)?.let { code to it } }
-        val first=if(displayName.isNotEmpty()) displayName.codePointAt(0) else 0
-        val firstLength=Character.charCount(first)
-        val second=if(displayName.length>firstLength) displayName.codePointAt(firstLength) else 0
-        val hasFlag=first in 0x1f1e6..0x1f1ff && second in 0x1f1e6..0x1f1ff
-        val leadingFlag=MobileCountryFlags.leading(displayName)
-        val countryCode=if(hasFlag) "${('a'.code+first-0x1f1e6).toChar()}${('a'.code+second-0x1f1e6).toChar()}" else ""
-        val flag=geo?.second ?: (if(hasFlag) MobileCountryFlags.bitmap(requireContext(),countryCode) else null)
-            ?: if(hasFlag && leadingFlag.isNotEmpty()) MobileCountryFlags.emoji(requireContext(),leadingFlag) else null
+    private fun flagBadge(displayName: String): ImageView {
+        val found=MobileCountryFlags.first(displayName)?.value.orEmpty()
+        val first=if(found.isNotEmpty()) found.codePointAt(0) else 0
+        val second=if(found.length>Character.charCount(first)) found.codePointAt(Character.charCount(first)) else 0
+        val country=first in 0x1f1e6..0x1f1ff && second in 0x1f1e6..0x1f1ff
+        val countryCode=if(country) "${('a'.code+first-0x1f1e6).toChar()}${('a'.code+second-0x1f1e6).toChar()}" else ""
+        val flag=(if(country) MobileCountryFlags.bitmap(requireContext(),countryCode) else null)
+            ?: if(found.isNotEmpty()) MobileCountryFlags.emoji(requireContext(),found) else null
         return ImageView(requireContext()).apply {
             if(flag!=null) {
                 setImageBitmap(flag);scaleType=ImageView.ScaleType.FIT_XY
-                contentDescription="Flag: ${(geo?.first ?: countryCode).uppercase(java.util.Locale.ROOT).ifEmpty { leadingFlag }}"
+                contentDescription="Flag: ${countryCode.uppercase(java.util.Locale.ROOT).ifEmpty { found }}"
             } else {
                 setImageResource(R.drawable.ic_mobile_globe)
                 imageTintList=android.content.res.ColorStateList.valueOf(muted)
@@ -1378,16 +1374,12 @@ class MobileHomeFragment : ToolbarFragment() {
                     }
                     nextProfileRows[profile.id]=row
                     val displayName=profile.displayName().trim()
-                    val first=if(displayName.isNotEmpty()) displayName.codePointAt(0) else 0
-                    val firstLength=Character.charCount(first)
-                    val second=if(displayName.length>firstLength) displayName.codePointAt(firstLength) else 0
-                    // Only a country flag leaves the name for the badge; a white or other flag stays in it.
-                    val leadingFlag=MobileCountryFlags.leadingCountry(displayName)
-                    val flagLength=leadingFlag.length
-                    val badge=flagBadge(displayName,profile.testCountry)
+                    // The first flag of the name moves to the badge, wherever it stands.
+                    val shownFlag=MobileCountryFlags.first(displayName)
+                    val badge=flagBadge(displayName)
                     row.addView(badge,LinearLayout.LayoutParams(dp(28),dp(28)).apply { marginStart=dp(10) })
                     val labels = LinearLayout(requireContext()).apply { orientation = LinearLayout.VERTICAL; setPadding(dp(10), dp(6), dp(6), dp(6)) }
-                    labels.addView(text(if(flagLength>0) displayName.substring(flagLength).trimStart() else displayName, 15f).apply { setTypeface(typeface,Typeface.BOLD); includeFontPadding=false; setPadding(0,0,0,dp(3)); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
+                    labels.addView(text(shownFlag?.let { displayName.removeRange(it.range).replace("  "," ").trim() } ?: displayName, 15f).apply { setTypeface(typeface,Typeface.BOLD); includeFontPadding=false; setPadding(0,0,0,dp(3)); maxLines = 1; ellipsize = android.text.TextUtils.TruncateAt.END })
                     labels.addView(text(profile.displayProtocol(), 12f, muted).apply { includeFontPadding=false; setPadding(0,0,0,0); maxLines=1 })
                     row.addView(labels, LinearLayout.LayoutParams(0, -2, 1f))
                     val pinnedServer=profile.id in pinnedProfileIds
@@ -1586,17 +1578,25 @@ class MobileHomeFragment : ToolbarFragment() {
             }
         }
     }
-    private var runningServerCache: Pair<Long,Pair<String,String>>?=null
+    private var runningServerCache: Pair<Pair<Long,Long>,Pair<String,String>>?=null
     /** The subscription and the server in use, looked up once per selection. */
     private fun runningServer(): Pair<String,String> {
         // The choice first: the running profile changes only once the service has reloaded, a second later.
         val id=DataStore.selectedProxy.takeIf { it>0 } ?: DataStore.currentProfile
-        runningServerCache?.takeIf { it.first==id }?.let { return it.second }
+        // A running auto selector names the server it chose and that server's own subscription: without the
+        // notification (Android TV has none) nothing else tells where the traffic goes.
+        val selector=app.rawline.mobile.bg.autoselector.AutoSelectorClient.status.value
+        val chosen=selector.selectedId.takeIf { selector.selectorId==id && it>0 } ?: -1L
+        runningServerCache?.takeIf { it.first==(id to chosen) }?.let { return it.second }
         val names=runCatching {
-            val profile=app.rawline.mobile.database.SagerDatabase.proxyDao.getById(id) ?: return@runCatching "" to ""
-            app.rawline.mobile.database.SagerDatabase.groupDao.getById(profile.groupId)?.displayName().orEmpty() to profile.displayName()
+            val dao=app.rawline.mobile.database.SagerDatabase.proxyDao
+            val profile=dao.getById(id) ?: return@runCatching "" to ""
+            val member=if(chosen>0) dao.getById(chosen) else null
+            val shown=member ?: profile
+            app.rawline.mobile.database.SagerDatabase.groupDao.getById(shown.groupId)?.displayName().orEmpty() to
+                (if(member!=null) profile.displayName()+" → "+member.displayName() else profile.displayName())
         }.getOrNull() ?: ("" to "")
-        runningServerCache=id to names
+        runningServerCache=(id to chosen) to names
         return names
     }
     private fun updateLatencies() {
