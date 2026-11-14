@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dns_rules_title">DNS ルール</string>
+    <string name="dns_rules_summary_empty">選んだサイト専用の DNS サーバー</string>
+    <string name="dns_rules_summary">ルール: %1$d、有効: %2$d</string>
+    <string name="dns_rules_note">ルールのサイトは、ほかの DNS ルールより先にそのルールの DNS サーバーで解決されます。</string>
+    <string name="dns_rules_more">%1$s ほか %2$d 件</string>
+    <string name="dns_rules_direct">直接</string>
+    <string name="dns_rules_via_proxy">プロキシ経由</string>
+    <string name="dns_rules_off">無効</string>
+    <string name="dns_rules_add">ルールを追加</string>
+    <string name="dns_rules_new">新しいルール</string>
+    <string name="dns_rules_rule">ルール</string>
+    <string name="dns_rules_sites">サイト (1 行に 1 つ)</string>
+    <string name="dns_rules_sites_help">domain:example.com はサブドメインを含む、full: はそのアドレスのみ、keyword:、regexp:、geosite:category-ai-chat-!cn</string>
+    <string name="dns_rules_server">DNS サーバー (例: https://dns.example/dns-query)</string>
+    <string name="dns_rules_direct_switch">プロキシを使わず直接</string>
+    <string name="dns_rules_enabled">有効</string>
+    <string name="dns_rules_delete_confirm">ルールを削除しますか?</string>
+    <string name="dns_rules_no_sites">サイトがありません</string>
+    <string name="dns_rules_unknown_kind">«%2$s» の種類 «%1$s:» は不明です</string>
+    <string name="dns_rules_bad_regex">正規表現 «%1$s» が正しくありません</string>
+    <string name="dns_rules_bad_server">DNS サーバー «%1$s»: %2$s</string>
+    <string name="dns_rules_change">編集</string>
+</resources>

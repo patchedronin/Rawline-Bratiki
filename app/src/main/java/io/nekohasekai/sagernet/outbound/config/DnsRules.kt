@@ -4,6 +4,8 @@ import app.rawline.mobile.outbound.json.JsonArray
 import app.rawline.mobile.outbound.json.JsonInput
 import app.rawline.mobile.outbound.json.JsonObject
 import app.rawline.mobile.outbound.json.jsonObjectOf
+import app.rawline.mobile.R
+import app.rawline.mobile.validation.vtr
 
 /**
  * A DNS rule of the settings: the sites it lists resolve through its own server, through the proxy or directly.
@@ -26,10 +28,10 @@ data class DnsRule(
     /** Why the core could not use the rule, "" when it can. A disabled rule is never checked. */
     fun problem(): String {
         if (!enabled) return ""
-        if (DnsRules.parse(sites).isEmpty()) return "Нет ни одного сайта"
+        if (DnsRules.parse(sites).isEmpty()) return vtr(R.string.dns_rules_no_sites)
         DnsRules.siteProblem(sites)?.let { return it }
         val address = DnsServers.parseDnsAddress(server)
-        if (address.address == null) return "DNS-сервер «$server»: ${address.why}"
+        if (address.address == null) return vtr(R.string.dns_rules_bad_server, server, address.why)
         return ""
     }
 
@@ -94,10 +96,10 @@ object DnsRules {
             val site = raw.trim()
             val colon = site.indexOf(':')
             val kind = if (colon > 0) site.substring(0, colon).lowercase() else ""
-            if (kind !in KINDS) return "Неизвестный вид «$kind:» в «$site»"
+            if (kind !in KINDS) return vtr(R.string.dns_rules_unknown_kind, kind, site)
             if (kind == "regexp" || kind == "regex") {
                 val value = site.substring(colon + 1).trim()
-                if (runCatching { Regex(value) }.isFailure) return "Неверное регулярное выражение «$value»"
+                if (runCatching { Regex(value) }.isFailure) return vtr(R.string.dns_rules_bad_regex, value)
             }
         }
         return null

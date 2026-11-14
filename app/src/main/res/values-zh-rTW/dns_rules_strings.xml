@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dns_rules_title">DNS 規則</string>
+    <string name="dns_rules_summary_empty">為所選網站使用單獨的 DNS 伺服器</string>
+    <string name="dns_rules_summary">規則：%1$d，已啟用：%2$d</string>
+    <string name="dns_rules_note">規則中的網站會先於其他 DNS 規則，透過該規則的 DNS 伺服器解析。</string>
+    <string name="dns_rules_more">%1$s 等 %2$d 項</string>
+    <string name="dns_rules_direct">直連</string>
+    <string name="dns_rules_via_proxy">透過代理</string>
+    <string name="dns_rules_off">已關閉</string>
+    <string name="dns_rules_add">新增規則</string>
+    <string name="dns_rules_new">新規則</string>
+    <string name="dns_rules_rule">規則</string>
+    <string name="dns_rules_sites">網站，每行一個</string>
+    <string name="dns_rules_sites_help">domain:example.com 含子網域，full: 僅此位址，keyword:、regexp:、geosite:category-ai-chat-!cn</string>
+    <string name="dns_rules_server">DNS 伺服器，例如 https://dns.example/dns-query</string>
+    <string name="dns_rules_direct_switch">直連，不經過代理</string>
+    <string name="dns_rules_enabled">啟用</string>
+    <string name="dns_rules_delete_confirm">刪除此規則？</string>
+    <string name="dns_rules_no_sites">沒有任何網站</string>
+    <string name="dns_rules_unknown_kind">«%2$s» 中的類型 «%1$s:» 未知</string>
+    <string name="dns_rules_bad_regex">正規表示式 «%1$s» 無效</string>
+    <string name="dns_rules_bad_server">DNS 伺服器 «%1$s»：%2$s</string>
+    <string name="dns_rules_change">編輯</string>
+</resources>

@@ -15,10 +15,10 @@ import app.rawline.mobile.ui.ServerUi
 
 /** The DNS rules of the settings: which sites resolve through which server, through the proxy or directly. */
 internal object DnsRulesEditor {
-    fun summary(): String {
+    fun summary(context: Context): String {
         val rules = DnsRules.decode(DataStore.dnsRules)
-        val on = rules.count { it.enabled }
-        return if (rules.isEmpty()) "Свой DNS-сервер для выбранных сайтов" else "Правил: ${rules.size}, включено: $on"
+        return if (rules.isEmpty()) context.getString(R.string.dns_rules_summary_empty)
+        else context.getString(R.string.dns_rules_summary, rules.size, rules.count { it.enabled })
     }
 
     fun show(context: Context, changed: () -> Unit) {
@@ -27,16 +27,18 @@ internal object DnsRulesEditor {
         val body = ui.column(16)
         fun render() {
             body.removeAllViews()
-            body.addView(ui.text("DNS-правила", 19f, bold = true))
-            body.addView(ui.text("Сайты из правила разрешаются через его DNS-сервер раньше остальных правил DNS.", 14f, MobilePalette.muted).apply { setPadding(0, ui.dp(6), 0, ui.dp(8)) })
+            body.addView(ui.text(context.getString(R.string.dns_rules_title), 19f, bold = true))
+            body.addView(ui.text(context.getString(R.string.dns_rules_note), 14f, MobilePalette.muted).apply { setPadding(0, ui.dp(6), 0, ui.dp(8)) })
             val rules = DnsRules.decode(DataStore.dnsRules)
             rules.forEachIndexed { index, rule ->
-                val title = rule.sites.take(2).joinToString(", ") + if (rule.sites.size > 2) " и ещё ${rule.sites.size - 2}" else ""
-                val subtitle = listOfNotNull(rule.server, if (rule.direct) "напрямую" else "через прокси", "выключено".takeIf { !rule.enabled }).joinToString(" · ")
+                val shown = rule.sites.take(2).joinToString(", ")
+                val title = if (rule.sites.size > 2) context.getString(R.string.dns_rules_more, shown, rule.sites.size - 2) else shown
+                val subtitle = listOfNotNull(rule.server, context.getString(if (rule.direct) R.string.dns_rules_direct else R.string.dns_rules_via_proxy),
+                    context.getString(R.string.dns_rules_off).takeIf { !rule.enabled }).joinToString(" · ")
                 body.addView(ui.tile(title, subtitle, R.drawable.ic_action_dns) { edit(context, index) { render(); changed() } },
                     LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
             }
-            body.addView(ui.tile("Добавить правило", null, R.drawable.ic_mobile_add) { edit(context, null) { render(); changed() } },
+            body.addView(ui.tile(context.getString(R.string.dns_rules_add), null, R.drawable.ic_mobile_add) { edit(context, null) { render(); changed() } },
                 LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
         }
         render()
@@ -50,26 +52,26 @@ internal object DnsRulesEditor {
         val rule = index?.let(rules::getOrNull) ?: DnsRule()
         val dialog = MobileSheetDialog(context)
         val body = ui.column(16)
-        body.addView(ui.text(if (index == null) "Новое правило" else "Правило", 19f, bold = true))
-        val sites = ui.field(body, "Сайты, по одному в строке", rule.sites.joinToString("\n"), multiline = true)
-        body.addView(ui.text("domain:example.com с поддоменами, full: только этот адрес, keyword:, regexp:, geosite:category-ai-chat-!cn", 13f, MobilePalette.muted).apply { setPadding(ui.dp(4), ui.dp(4), 0, 0) })
-        val server = ui.field(body, "DNS-сервер, например https://dns.example/dns-query", rule.server)
-        val direct = ui.switchRow(body, "Напрямую, без прокси", rule.direct)
-        val enabled = ui.switchRow(body, "Включено", rule.enabled)
+        body.addView(ui.text(context.getString(if (index == null) R.string.dns_rules_new else R.string.dns_rules_rule), 19f, bold = true))
+        val sites = ui.field(body, context.getString(R.string.dns_rules_sites), rule.sites.joinToString("\n"), multiline = true)
+        body.addView(ui.text(context.getString(R.string.dns_rules_sites_help), 13f, MobilePalette.muted).apply { setPadding(ui.dp(4), ui.dp(4), 0, 0) })
+        val server = ui.field(body, context.getString(R.string.dns_rules_server), rule.server)
+        val direct = ui.switchRow(body, context.getString(R.string.dns_rules_direct_switch), rule.direct)
+        val enabled = ui.switchRow(body, context.getString(R.string.dns_rules_enabled), rule.enabled)
         val error = TextView(context).apply { setTextColor(android.graphics.Color.rgb(232, 120, 112)); textSize = 14f; setPadding(ui.dp(4), ui.dp(8), 0, 0) }
         body.addView(error)
         fun store(list: List<DnsRule>) { DataStore.dnsRules = DnsRules.encode(list); dialog.dismiss(); saved() }
-        body.addView(ui.button("Сохранить", primary = true) {
+        body.addView(ui.button(context.getString(R.string.save), primary = true) {
             val next = DnsRule(enabled.isChecked, DnsRules.lines(sites.text.toString()), server.text.toString().trim(), direct.isChecked)
             val problem = next.copy(enabled = true).problem()
             if (problem.isNotEmpty()) { error.text = problem; return@button }
             if (index == null || index !in rules.indices) rules += next else rules[index] = next
             store(rules)
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(12) })
-        if (index != null && index in rules.indices) body.addView(ui.button("Удалить", danger = true) {
-            MobileAlertDialogBuilder(context).setMessage("Удалить правило?")
+        if (index != null && index in rules.indices) body.addView(ui.button(context.getString(R.string.delete), danger = true) {
+            MobileAlertDialogBuilder(context).setMessage(R.string.dns_rules_delete_confirm)
                 .setNegativeButton(android.R.string.cancel, null)
-                .setPositiveButton("Удалить") { _, _ -> rules.removeAt(index); store(rules) }
+                .setPositiveButton(R.string.delete) { _, _ -> rules.removeAt(index); store(rules) }
                 .show()
         }, LinearLayout.LayoutParams(-1, -2).apply { topMargin = ui.dp(8) })
         dialog.setContentView(ScrollView(context).apply { addView(body) })

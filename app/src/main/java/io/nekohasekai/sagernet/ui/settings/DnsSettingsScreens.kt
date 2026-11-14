@@ -28,10 +28,10 @@ class DnsSettingsFragment : SettingsScreenFragment(R.xml.settings_dns) {
 
     override fun bind() {
         pref<Preference>("dnsRules").apply {
-            title = "DNS-правила"
-            summary = DnsRulesEditor.summary()
+            title = getString(R.string.dns_rules_title)
+            summary = DnsRulesEditor.summary(requireContext())
             setOnPreferenceClickListener {
-                DnsRulesEditor.show(requireContext()) { summary = DnsRulesEditor.summary(); needReload() }
+                DnsRulesEditor.show(requireContext()) { summary = DnsRulesEditor.summary(requireContext()); needReload() }
                 true
             }
         }

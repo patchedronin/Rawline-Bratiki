@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dns_rules_title">DNS rules</string>
+    <string name="dns_rules_summary_empty">A DNS server of their own for chosen sites</string>
+    <string name="dns_rules_summary">Rules: %1$d, on: %2$d</string>
+    <string name="dns_rules_note">Sites of a rule resolve through its DNS server ahead of the other DNS rules.</string>
+    <string name="dns_rules_more">%1$s and %2$d more</string>
+    <string name="dns_rules_direct">directly</string>
+    <string name="dns_rules_via_proxy">through the proxy</string>
+    <string name="dns_rules_off">off</string>
+    <string name="dns_rules_add">Add rule</string>
+    <string name="dns_rules_new">New rule</string>
+    <string name="dns_rules_rule">Rule</string>
+    <string name="dns_rules_sites">Sites, one per line</string>
+    <string name="dns_rules_sites_help">domain:example.com with subdomains, full: this address only, keyword:, regexp:, geosite:category-ai-chat-!cn</string>
+    <string name="dns_rules_server">DNS server, for example https://dns.example/dns-query</string>
+    <string name="dns_rules_direct_switch">Directly, without the proxy</string>
+    <string name="dns_rules_enabled">Enabled</string>
+    <string name="dns_rules_delete_confirm">Delete the rule?</string>
+    <string name="dns_rules_no_sites">No sites</string>
+    <string name="dns_rules_unknown_kind">Unknown kind «%1$s:» in «%2$s»</string>
+    <string name="dns_rules_bad_regex">Invalid regular expression «%1$s»</string>
+    <string name="dns_rules_bad_server">DNS server «%1$s»: %2$s</string>
+    <string name="dns_rules_change">Edit</string>
+</resources>

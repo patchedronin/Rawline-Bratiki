@@ -1,0 +1,25 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="dns_rules_title">DNS 规则</string>
+    <string name="dns_rules_summary_empty">为所选网站使用单独的 DNS 服务器</string>
+    <string name="dns_rules_summary">规则：%1$d，已启用：%2$d</string>
+    <string name="dns_rules_note">规则中的网站会先于其他 DNS 规则，通过该规则的 DNS 服务器解析。</string>
+    <string name="dns_rules_more">%1$s 等 %2$d 项</string>
+    <string name="dns_rules_direct">直连</string>
+    <string name="dns_rules_via_proxy">通过代理</string>
+    <string name="dns_rules_off">已关闭</string>
+    <string name="dns_rules_add">添加规则</string>
+    <string name="dns_rules_new">新规则</string>
+    <string name="dns_rules_rule">规则</string>
+    <string name="dns_rules_sites">网站，每行一个</string>
+    <string name="dns_rules_sites_help">domain:example.com 含子域名，full: 仅此地址，keyword:、regexp:、geosite:category-ai-chat-!cn</string>
+    <string name="dns_rules_server">DNS 服务器，例如 https://dns.example/dns-query</string>
+    <string name="dns_rules_direct_switch">直连，不经过代理</string>
+    <string name="dns_rules_enabled">启用</string>
+    <string name="dns_rules_delete_confirm">删除此规则？</string>
+    <string name="dns_rules_no_sites">没有任何网站</string>
+    <string name="dns_rules_unknown_kind">«%2$s» 中的类型 «%1$s:» 未知</string>
+    <string name="dns_rules_bad_regex">正则表达式 «%1$s» 无效</string>
+    <string name="dns_rules_bad_server">DNS 服务器 «%1$s»：%2$s</string>
+    <string name="dns_rules_change">编辑</string>
+</resources>
