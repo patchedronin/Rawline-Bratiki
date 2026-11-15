@@ -1,6 +1,138 @@
+diff --git a/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt b/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..b1a0f27c53394d22a08091fc37fd2122cad1be9c
+--- /dev/null
++++ b/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt
+@@ -0,0 +1,43 @@
++package app.rawline.mobile
++
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import androidx.test.platform.app.InstrumentationRegistry
++import app.rawline.mobile.database.SagerDatabase
++import app.rawline.mobile.database.preference.SettingEntry
++import app.rawline.mobile.database.preference.SettingsStore
++import org.junit.Assert.*
++import org.junit.Test
++import org.junit.runner.RunWith
++
++@RunWith(AndroidJUnit4::class)
++class BratikiDefaultsTest {
++    @Test fun freshDatabaseIsSelectiveAndReopenPreservesUserChanges() {
++        val context = InstrumentationRegistry.getInstrumentation().targetContext
++        val name = "bratiki-defaults-regression.db"
++        context.deleteDatabase(name)
++        try {
++            var db = SagerDatabase.openProfileDatabase(context, name)
++            try {
++                val store = SettingsStore({ db })
++                assertTrue(store.getBoolean(Key.PROXY_APPS, false))
++                assertFalse(store.getBoolean(Key.BYPASS_MODE, true))
++                assertEquals(setOf("org.telegram.messenger", "org.telegram.messenger.web", "com.google.android.youtube"),
++                    store.getString(Key.INDIVIDUAL).orEmpty().lines().toSet())
++                assertFalse(store.getBoolean(Key.ALLOW_BYPASS, true))
++                assertTrue(store.getBoolean("block_unowned_tun", false))
++                assertFalse(store.contains("inbound_pass"))
++                assertFalse(store.contains("core_box_api_secret"))
++                db.settingsDao().put(SettingEntry(Key.INDIVIDUAL, "user.browser"))
++                db.settingsDao().put(SettingEntry(Key.PROXY_APPS, "false"))
++                db.settingsDao().delete("vpn_mtu")
++            } finally { db.close() }
++            db = SagerDatabase.openProfileDatabase(context, name)
++            try {
++                val store = SettingsStore({ db })
++                assertEquals("user.browser", store.getString(Key.INDIVIDUAL))
++                assertFalse(store.getBoolean(Key.PROXY_APPS, true))
++                assertFalse(store.contains("vpn_mtu"))
++            } finally { db.close() }
++        } finally { context.deleteDatabase(name) }
++    }
++}
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt b/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt
+index dab44aad395bd898c6b639edf5699f3076537088..6dbb35856e7cb23da5fe4f895531d556bb40b633 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt
+@@ -166,8 +166,18 @@ class VpnService : BaseVpnService(),
+         // Native transport sockets cannot call the in-process protect(fd). Keep this
+         // application's UID outside every TUN: a native probe may start while a
+         // regular protocol is connected, after this builder has already run.
+-        val packages=TunApplicationPolicy.resolve(packageName,options.getIncludePackage().toList(),options.getExcludePackage().toList())
+-        packages.included.forEach { try { builder.addAllowedApplication(it) } catch(_:PackageManager.NameNotFoundException) {} }
++        val included = options.getIncludePackage().toList()
++        require(!(DataStore.proxyApps && !DataStore.bypass && included.isEmpty())) {
++            "No selected VPN applications are installed; select applications in Apps VPN mode"
++        }
++        val packages=TunApplicationPolicy.resolve(packageName,included,options.getExcludePackage().toList())
++        var allowedApplications = 0
++        packages.included.forEach {
++            try { builder.addAllowedApplication(it); allowedApplications++ } catch(_:PackageManager.NameNotFoundException) {}
++        }
++        require(packages.included.isEmpty() || allowedApplications > 0) {
++            "No selected VPN applications are installed; select applications in Apps VPN mode"
++        }
+         packages.excluded.forEach { try { builder.addDisallowedApplication(it) } catch(_:PackageManager.NameNotFoundException) {} }
+ 
+         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.isHTTPProxyEnabled()) {
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt b/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt
+new file mode 100644
+index 0000000000000000000000000000000000000000..6c869507b27812fa66521e41399882abeb0ed2cd
+--- /dev/null
++++ b/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt
+@@ -0,0 +1,40 @@
++package app.rawline.mobile.database
++
++import androidx.sqlite.db.SupportSQLiteDatabase
++import app.rawline.mobile.Key
++
++/** Seed only Room's onCreate transaction, never an upgrade, launch or backup restore. */
++internal object BratikiDefaults {
++    fun seed(db: SupportSQLiteDatabase) {
++        val values = mapOf(
++            Key.SERVICE_MODE to Key.MODE_VPN,
++            Key.PROXY_APPS to "true",
++            Key.BYPASS_MODE to "false",
++            // Keep package names, not device-specific UIDs; also works if installed later.
++            Key.INDIVIDUAL to "org.telegram.messenger\norg.telegram.messenger.web\ncom.google.android.youtube",
++            Key.ALLOW_BYPASS to "false",
++            "vpn_mtu" to "1200",
++            "block_unowned_tun" to "true",
++            "block_quic" to "true",
++            "inbound_address" to "127.0.0.1",
++            "lan_sharing_enabled" to "false",
++            "remote_dns" to "https://1.1.1.1/dns-query",
++            "direct_dns" to "localhost",
++            "dns_final_out" to "remote",
++            "enable_dns_routing" to "true",
++            "fakedns" to "false",
++            "log_level" to "warn",
++            "xray_log_level" to "warning",
++            "enable_stats" to "false",
++            "exit_country_lookup" to "false",
++            "core_box_clash_api" to "-9090",
++            "core_box_api_port" to "-9091",
++            // Existing one-time upstream migrations must not undo the new-install preset.
++            "block_unowned_tun_112_migrated" to "true",
++            "diagnosticLogsConfigured" to "true",
++        )
++        for ((key, value) in values) {
++            db.execSQL("INSERT INTO `settings` (`key`, `value`) VALUES (?, ?)", arrayOf(key, value))
++        }
++    }
++}
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt b/app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt
+index ca3830a6e0e095b8e34cca56646fafdd720f750d..af5fb998b273a8ad393f24301ac6bc7e5993866d 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/database/SagerDatabase.kt
+@@ -184,6 +184,7 @@ abstract class SagerDatabase : RoomDatabase() {
+         private val callback = object : RoomDatabase.Callback() {
+             override fun onCreate(db: SupportSQLiteDatabase) {
+                 insertDefaultGroup(db)
++                BratikiDefaults.seed(db)
+             }
+         }
+ 
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt
 new file mode 100644
-index 0000000..59638d7
+index 0000000000000000000000000000000000000000..59638d7e49b20bd2883c929596f5015307f07eac
 --- /dev/null
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt
 @@ -0,0 +1,313 @@
@@ -319,7 +451,7 @@ index 0000000..59638d7
 +}
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt
 new file mode 100644
-index 0000000..48cf0bd
+index 0000000000000000000000000000000000000000..48cf0bd748ad2b02c221abef03dbba999f1e436f
 --- /dev/null
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt
 @@ -0,0 +1,434 @@
@@ -758,7 +890,7 @@ index 0000000..48cf0bd
 +    }
 +}
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
-index 917b462..7db497a 100644
+index 917b462168d577b7f7a1fe99701ffc31ee6becd6..7db497a124be140b5c080251f7f01cdf422fe652 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
 @@ -44,6 +44,18 @@ class MobileGlass(val radius: Float, private val tint: Int? = null) : Drawable()
@@ -795,7 +927,7 @@ index 917b462..7db497a 100644
          canvas.drawPath(shape, paint)
          paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.shader = rim
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
-index 48eaaf5..f3dcae4 100644
+index 48eaaf5bfe464d4e4670b5adcb93e12de1913c25..f3dcae4316ea10a56d78cfdafb0ffb7652d20652 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
 @@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable
@@ -807,7 +939,7 @@ index 48eaaf5..f3dcae4 100644
          if(MobileStyle.new) {
              // Soft light for the glass to lie on: true black or white stays the base.
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
-index 5836c5e..a9f496e 100644
+index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a306e5503 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 @@ -74,6 +74,11 @@ class MobileHomeFragment : ToolbarFragment() {
@@ -1040,7 +1172,7 @@ index 5836c5e..a9f496e 100644
          }
      }
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
-index 9d7e59e..73ed0ff 100644
+index 9d7e59ec44e28bb141dd49ebe64852d7c1954411..73ed0ff44b86152b187549cd9ce979f63a7bc93e 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
 @@ -14,7 +14,7 @@ import kotlin.math.*
@@ -1053,7 +1185,7 @@ index 9d7e59e..73ed0ff 100644
      private val font = runCatching { ResourcesCompat.getFont(context, R.font.geologica) }.getOrNull() ?: Typeface.DEFAULT
      private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
-index 5bd220c..be8e063 100644
+index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb46e26877d 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
 @@ -14,45 +14,81 @@ object MobileStyle {
@@ -1195,7 +1327,7 @@ index 5bd220c..be8e063 100644
          }
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt
 new file mode 100644
-index 0000000..901457a
+index 0000000000000000000000000000000000000000..901457a274d83ac680e8cf720ed5b58901ddcd0a
 --- /dev/null
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt
 @@ -0,0 +1,15 @@
@@ -1215,7 +1347,7 @@ index 0000000..901457a
 +    val snow get() = DataStore.configurationStore.getInt(SNOW, 75).coerceIn(0, 150) / 100f
 +}
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
-index 31294ee..2830c6e 100644
+index 31294ee18831a1770f820ee2819370f4cbbb516f..2830c6e3c9bd325ba50f207cf13b22698a427e43 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
 @@ -6,6 +6,8 @@ import android.net.Uri
@@ -1285,7 +1417,7 @@ index 31294ee..2830c6e 100644
              startActivity(android.content.Intent(requireContext(), app.rawline.mobile.ui.MobileLayoutEditorActivity::class.java)); true
          }
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt b/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
-index 676cfaa..80b061e 100644
+index 676cfaa247e40b70e66175649f632b200f71fac0..80b061e61c8f1bcc70547d12028e72f8c7475c48 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
 @@ -18,12 +18,12 @@ import java.io.IOException
@@ -1315,7 +1447,7 @@ index 676cfaa..80b061e 100644
              .header("Accept", "application/vnd.github+json")
 diff --git a/app/src/main/res/values-ru/local_power_button.xml b/app/src/main/res/values-ru/local_power_button.xml
 new file mode 100644
-index 0000000..894673c
+index 0000000000000000000000000000000000000000..894673c6da99ba5c6f778a80ab893ea3b2960b11
 --- /dev/null
 +++ b/app/src/main/res/values-ru/local_power_button.xml
 @@ -0,0 +1,8 @@
@@ -1328,7 +1460,7 @@ index 0000000..894673c
 +    <string-array name="local_power_skins"><item>Люк</item><item>Двор с ТЭЦ</item></string-array>
 +</resources>
 diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
-index c4b5faa..ad946e3 100644
+index c4b5faaa623b139fa5c7a1954e9cd11422e85135..ad946e391f4b5a67863a7cf56ab76c2c7cf20610 100644
 --- a/app/src/main/res/values-ru/strings.xml
 +++ b/app/src/main/res/values-ru/strings.xml
 @@ -2693,4 +2693,9 @@
@@ -1343,7 +1475,7 @@ index c4b5faa..ad946e3 100644
  </resources>
 diff --git a/app/src/main/res/values/local_power_button.xml b/app/src/main/res/values/local_power_button.xml
 new file mode 100644
-index 0000000..ff597e3
+index 0000000000000000000000000000000000000000..ff597e34f2db454b01b3ede9b5c8d38c6b6a01ab
 --- /dev/null
 +++ b/app/src/main/res/values/local_power_button.xml
 @@ -0,0 +1,9 @@
@@ -1357,7 +1489,7 @@ index 0000000..ff597e3
 +    <string-array name="local_power_skin_values"><item>hatch</item><item>courtyard</item></string-array>
 +</resources>
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index 7bec263..fa6c11c 100644
+index 7bec2637467cd5d0a986f98e600c4d635c6a99f8..fa6c11cda71c2bf94e758c1d7f66501990cbf47c 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
 @@ -2820,4 +2820,9 @@
@@ -1371,7 +1503,7 @@ index 7bec263..fa6c11c 100644
 +    <string name="qmobile_theme_loaded">Theme “%1$s” applied</string>
  </resources>
 diff --git a/app/src/main/res/xml/settings_appearance.xml b/app/src/main/res/xml/settings_appearance.xml
-index 9c39fd1..fd3192a 100644
+index 9c39fd1c39666be7d7c09c9a24d19ee2aa9cac50..fd3192a124b1f6aa9a359343aabe43c31750e6f8 100644
 --- a/app/src/main/res/xml/settings_appearance.xml
 +++ b/app/src/main/res/xml/settings_appearance.xml
 @@ -1,7 +1,13 @@

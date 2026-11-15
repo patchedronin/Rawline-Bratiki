@@ -55,6 +55,27 @@ python bratiki/scripts/build.py stage --apk /path/to/verified-upstream.apk --apk
 
 To review a migration locally without pushing: use a clean `main` checkout and run `python bratiki/scripts/upstream.py prepare-update --tag rawline-X.Y.Z`. It generates a reviewable Git bundle. The tag must differ from the current pin.
 
+## First-install preset (1.1.4 r3)
+
+New profile databases start in TUN / **only selected apps** mode: official Telegram
+(`org.telegram.messenger`, `org.telegram.messenger.web`) and YouTube
+(`com.google.android.youtube`). Other apps, including browsers and YouTube Music,
+stay outside the VPN. Missing packages remain selected by name for later installation;
+if none is installed, VPN startup fails instead of capturing every app.
+
+MTU 1200, tun0 guard and proxy QUIC blocking are enabled. LAN sharing and app VPN bypass
+are disabled; listeners remain loopback-only. DNS: Cloudflare DoH for remote, system
+resolver for direct, DNS routing on, FakeDNS off. Logs: warn/warning; connection stats,
+exit-country lookups and both APIs are off. The existing minimal courtyard UI remains.
+No subscription, server credential, UID or device identifier is bundled. Inbound/API
+secrets retain their per-device generation. The existing Default route sends captured
+traffic through the selected proxy; user/subscription routing can override it.
+
+Seeding runs only inside Room's database-creation transaction, not on upgrades,
+restarts or restores. Existing users retain all their settings. Android VPN permission,
+notifications and battery restrictions still need confirmation on each device. On
+firmware without socket-owner reporting, disable the tun0 guard if connectivity fails.
+
 ## Android updates
 
 The APK must retain application ID `app.rawline.mobile`, the existing signing certificate and a greater versionCode. UpdateVerifier retains package/version/hash/signature checks. Installation may show Android's confirmation screen or require permission to install updates from Rawline. No root or ADB is needed after installing the channel-enabled build.

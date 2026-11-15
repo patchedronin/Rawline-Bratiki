@@ -184,6 +184,7 @@ abstract class SagerDatabase : RoomDatabase() {
         private val callback = object : RoomDatabase.Callback() {
             override fun onCreate(db: SupportSQLiteDatabase) {
                 insertDefaultGroup(db)
+                BratikiDefaults.seed(db)
             }
         }
 
