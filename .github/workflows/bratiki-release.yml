@@ -232,7 +232,8 @@ jobs:
               '<!-- rawline-update\n' + json.dumps(manifest, separators=(',', ':')) + '\n-->\n')
           # Draft-first makes partial uploads non-public. Failures require explicit manual draft/tag cleanup;
           # this workflow never replaces an asset or resumes a release with ambiguous provenance.
-          release = api(f'repos/{repo}/releases', {'tag_name': tag, 'target_commitish': meta['sourceSha'],
+          # GitHub resolves the existing verified tag; do not request commit/tag creation during release creation.
+          release = api(f'repos/{repo}/releases', {'tag_name': tag,
               'name': f'Rawline Bratiki {meta["versionName"]}', 'body': body, 'draft': True, 'prerelease': False})
           upload = release['upload_url'].split('{', 1)[0] + '?name=' + name
           uploaded = api(upload, signed.read_bytes(), content_type='application/vnd.android.package-archive')
