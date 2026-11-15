@@ -88,7 +88,8 @@ jobs:
           def source(path):
               return base64.b64decode(api(f'repos/{repo}/contents/{path}?ref={sha}')['content']).decode()
           pin = json.loads(source('bratiki/upstream.json'))
-          props = dict(line.strip().split('=', 1) for line in source('nb4a.properties').splitlines() if '=' in line)
+          props = dict(line.strip().split('=', 1) for line in source('nb4a.properties').splitlines()
+                       if '=' in line and not line.lstrip().startswith('#'))
           assert meta['upstream'] == pin and meta['versionName'] == pin['versionName'] == props['VERSION_NAME']
           assert meta['versionCode'] == int(props['VERSION_CODE']) * 1000 + revision
           assert pin['versionIndex'] == int(props['VERSION_CODE'])
@@ -149,7 +150,7 @@ jobs:
               with path.open('rb') as stream:
                   return hashlib.file_digest(stream, 'sha256').hexdigest()
           assert apk.stat().st_size == meta['unsignedSize'] and sha256(apk) == meta['unsignedSha256']
-          tag = 'rawline-' + meta['versionName']
+          tag = 'rawline-' + meta['versionName'] + (f'+r{meta["revision"]}' if meta['revision'] > 2 else '')
           def api(path, data=None, method=None, content_type='application/json'):
               payload = json.dumps(data).encode() if isinstance(data, dict) else data
               url = path if path.startswith('https://') else 'https://api.github.com/' + path

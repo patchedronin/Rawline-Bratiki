@@ -70,6 +70,8 @@ def notify(item, failure=None):
     if not matching:
         print(api(f"repos/{repo}/issues", {"title": title, "body": body})["html_url"])
     else:
+        if failure:
+            api(f'repos/{repo}/issues/{matching[0]["number"]}/comments', {"body": body})
         print(matching[0]["html_url"])
 
 

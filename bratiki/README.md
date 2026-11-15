@@ -41,7 +41,7 @@ Optional: `-f tag=rawline-X.Y.Z`. The helper fetches upstream source without exe
 
 Review/merge the PR, then dispatch an unsigned build explicitly: changes made with `GITHUB_TOKEN` may not trigger another workflow automatically. Rebuild the pinned core when upstream changes its core reference; never reuse an old AAR blindly. Changed transport count fails staging until reviewed.
 
-Version code is upstream `VERSION_CODE * 1000 + revision`; revisions accepted are 2..998. For a later upstream base use revision 2 again; it still outranks earlier upstream bases. Do not publish the same revision for different APKs. The current release workflow uses one stable tag per upstream base.
+Version code is upstream `VERSION_CODE * 1000 + revision`; revisions accepted are 2..998. For a later upstream base use revision 2 again; it still outranks earlier upstream bases. Revision 2 uses tag `rawline-X.Y.Z`; subsequent hotfixes use `rawline-X.Y.Z+r3`, `+r4`, etc. The updater accepts semver build metadata and selects the higher manifest versionCode. Do not reuse a revision for a different APK or overwrite an existing public release.
 
 ## Local checks
 
