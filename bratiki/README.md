@@ -76,6 +76,14 @@ restarts or restores. Existing users retain all their settings. Android VPN perm
 notifications and battery restrictions still need confirmation on each device. On
 firmware without socket-owner reporting, disable the tun0 guard if connectivity fails.
 
+## Subscription toolbar fix (1.1.4 r4)
+
+Switching the home subscription replaces its refresh/menu controls instead of
+appending another pair. Toolbar actions are rebuilt independently of cached server
+rows, including changes to other groups. Local groups do not show refresh. The
+subscription picker keeps its remaining row width. No subscription or VPN setting
+is migrated by this change.
+
 ## Android updates
 
 The APK must retain application ID `app.rawline.mobile`, the existing signing certificate and a greater versionCode. UpdateVerifier retains package/version/hash/signature checks. Installation may show Android's confirmation screen or require permission to install updates from Rawline. No root or ADB is needed after installing the channel-enabled build.

@@ -748,6 +748,7 @@ class MobileHomeFragment : ToolbarFragment() {
         if(nativeReceiverRegistered) { requireContext().unregisterReceiver(nativeStatusReceiver);nativeReceiverRegistered=false }
         groupReorder?.cancel();groupReorder=null;profileReorders.values.forEach { it.cancel() };profileReorders.clear();reordering=false
         groupChip = null; groupTabs = null; sheetDown = null; sheetUp = null
+        minimalChipActions = null
         geoBanner = null; updatesTile = null; geoStatus = null; geoProgress = null; geoCheck = null
         GroupRepo.removeListener(groupListener)
         observer?.let { SagerDatabase.instance.invalidationTracker.removeObserver(it) }
@@ -1240,6 +1241,23 @@ class MobileHomeFragment : ToolbarFragment() {
             }
             pickerGroups=groups.map { it.first }
             groupChip?.text=pickerGroups.firstOrNull { it.id==focusedGroup }?.displayName().orEmpty()
+            if (minimalHome) minimalChipActions?.let { actions ->
+                // These controls belong to the current subscription, not the cached server rows.
+                actions.removeAllViews()
+                nextRefreshButtons.clear()
+                pickerGroups.firstOrNull { it.id == focusedGroup }?.let { group ->
+                    if (group.isSubscription) {
+                        val refresh = iconAction(R.drawable.ic_mobile_refresh, getString(R.string.qmobile_refresh)) {
+                            SubscriptionClient.refreshGroup(group.id, false)
+                        }.apply { isEnabled = !SubscriptionClient.states.value.containsKey(group.id) }
+                        nextRefreshButtons[group.id] = refresh
+                        actions.addView(refresh, LinearLayout.LayoutParams(dp(40), dp(48)))
+                    }
+                    lateinit var more: ImageButton
+                    more = iconAction(R.drawable.ic_mobile_more, getString(R.string.qmobile_more)) { groupMenu(group, more) }
+                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
+                }
+            }
             val serverColumn=serverRows ?: return@launch
             if(risenGroup!=focusedGroup) {
                 // Only a change of subscription rises; the first render is simply there.
@@ -1270,7 +1288,6 @@ class MobileHomeFragment : ToolbarFragment() {
             nextProfileReorders.keys.retainAll(setOf(focusedGroup))
 
             var firstGroup = true
-            var minimalActionsPlaced = false
             for ((groupIndex, pair) in groups.withIndex()) {
                 val (group,profiles)=pair
                 if(group.id!=focusedGroup) continue
@@ -1341,19 +1358,13 @@ class MobileHomeFragment : ToolbarFragment() {
                     })
                     heading.setOnTouchListener { _,event -> gestures.onTouchEvent(event) }
                 }
-                val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
-                lateinit var more: ImageButton
-                more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
-                val actions = minimalChipActions
-                if (minimalHome && actions != null && !minimalActionsPlaced) {
-                    // One line: the group picker, add, refresh and the menu share the same row.
-                    minimalActionsPlaced = true
-                    refresh?.let { actions.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
-                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
-                } else {
+                if (!minimalHome) {
+                    val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
+                    lateinit var more: ImageButton
+                    more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
                     title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
                     refresh?.let { title.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
-                    if(!minimalHome) title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
+                    title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
                     title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
                     head.addView(title)
                 }

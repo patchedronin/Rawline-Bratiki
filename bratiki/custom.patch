@@ -47,6 +47,71 @@ index 0000000000000000000000000000000000000000..b1a0f27c53394d22a08091fc37fd2122
 +        } finally { context.deleteDatabase(name) }
 +    }
 +}
+diff --git a/app/src/androidTest/java/app/rawline/mobile/MobileImportUiRegressionTest.kt b/app/src/androidTest/java/app/rawline/mobile/MobileImportUiRegressionTest.kt
+index 50402ccf94eb6c8e89bc2e22d45553453c92481b..2b660a681b58a6d00cbdff77b5966a01d610335a 100644
+--- a/app/src/androidTest/java/app/rawline/mobile/MobileImportUiRegressionTest.kt
++++ b/app/src/androidTest/java/app/rawline/mobile/MobileImportUiRegressionTest.kt
+@@ -144,6 +144,60 @@ class MobileImportUiRegressionTest {
+         }
+     }
+ 
++    @Test fun subscriptionActionsReplacePreviousGroupAndSurviveRetainedRows() {
++        val previous = app.rawline.mobile.database.GroupRepo.currentId()
++        val groups = listOf(
++            ProxyGroup(name = "Toolbar subscription A", url = "https://example.invalid/a", skipAutoUpdate = true),
++            ProxyGroup(name = "Toolbar subscription B", url = "https://example.invalid/b", skipAutoUpdate = true),
++            ProxyGroup(name = "Toolbar local group"),
++        )
++        groups.forEach { it.id = SagerDatabase.groupDao.insert(it) }
++        app.rawline.mobile.database.GroupRepo.setCurrent(groups.first().id)
++        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
++            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
++        try {
++            ui {
++                if (android.os.Build.VERSION.SDK_INT >= 27) {
++                    activity.setShowWhenLocked(true)
++                    activity.setTurnScreenOn(true)
++                }
++                activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
++            }
++            fun home() = activity.supportFragmentManager.findFragmentById(R.id.fragment_holder) as? MobileHomeFragment
++            fun assertToolbar(group: ProxyGroup) {
++                await { ui {
++                    val chip = descendants(activity.window.decorView).filterIsInstance<TextView>()
++                        .firstOrNull { it.text == group.name } ?: return@ui false
++                    val row = chip.parent as ViewGroup
++                    val refresh = descendants(row).filter { it.contentDescription == context.getString(R.string.qmobile_refresh) }
++                    val menu = descendants(row).filter { it.contentDescription == context.getString(R.string.qmobile_more) }
++                    refresh.size == (if (group.isSubscription) 1 else 0) && menu.size == 1 &&
++                        chip.width > 80 * context.resources.displayMetrics.density
++                } }
++            }
++            for (group in listOf(groups[0], groups[1], groups[0], groups[2], groups[1], groups[0])) {
++                ui { app.rawline.mobile.database.GroupRepo.setCurrent(group.id); home()?.refresh() }
++                assertToolbar(group)
++            }
++            // Changing another group rebuilds the toolbar while the current server rows are retained.
++            groups[1].name = "Renamed inactive subscription"
++            SagerDatabase.groupDao.update(groups[1])
++            await { ui { home() != null } }
++            ui { home()!!.refresh() }
++            assertToolbar(groups[0])
++            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
++            try {
++                File(context.filesDir, "subscription-toolbar-fixed.png").outputStream().use {
++                    screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
++                }
++            } finally { screenshot.recycle() }
++        } finally {
++            ui { activity.finish() }
++            app.rawline.mobile.database.GroupRepo.setCurrent(previous)
++            groups.forEach { SagerDatabase.groupDao.deleteById(it.id) }
++        }
++    }
++
+     @Test fun bottomServerReceivesWholeRowTouchWithLegacyControlsHidden() {
+         val listMode=DataStore.mobileListMode
+         DataStore.mobileListMode="list"
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt b/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt
 index dab44aad395bd898c6b639edf5699f3076537088..6dbb35856e7cb23da5fe4f895531d556bb40b633 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/bg/VpnService.kt
@@ -939,7 +1004,7 @@ index 48eaaf5bfe464d4e4670b5adcb93e12de1913c25..f3dcae4316ea10a56d78cfdafb0ffb76
          if(MobileStyle.new) {
              // Soft light for the glass to lie on: true black or white stays the base.
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
-index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a306e5503 100644
+index 5836c5e31506e13ea744e8a4f216e50a33963321..51ac5f48ba9ba1adbf14ff6a6e44fcb87f9bed60 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 @@ -74,6 +74,11 @@ class MobileHomeFragment : ToolbarFragment() {
@@ -988,7 +1053,15 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
          sheetDown?.text="↓ "+rateText(down)
          sheetUp?.text="↑ "+rateText(up)
      }
-@@ -896,6 +919,10 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -725,6 +748,7 @@ class MobileHomeFragment : ToolbarFragment() {
+         if(nativeReceiverRegistered) { requireContext().unregisterReceiver(nativeStatusReceiver);nativeReceiverRegistered=false }
+         groupReorder?.cancel();groupReorder=null;profileReorders.values.forEach { it.cancel() };profileReorders.clear();reordering=false
+         groupChip = null; groupTabs = null; sheetDown = null; sheetUp = null
++        minimalChipActions = null
+         geoBanner = null; updatesTile = null; geoStatus = null; geoProgress = null; geoCheck = null
+         GroupRepo.removeListener(groupListener)
+         observer?.let { SagerDatabase.instance.invalidationTracker.removeObserver(it) }
+@@ -896,6 +920,10 @@ class MobileHomeFragment : ToolbarFragment() {
                      }
                      addView(groupChip,LinearLayout.LayoutParams(0,dp(48),1f).apply { marginEnd=dp(8) })
                      addView(addTile,LinearLayout.LayoutParams(dp(48),dp(48)))
@@ -999,7 +1072,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                  }
                  val chipNear=chipNearList()
                  if(!chipBottom && !chipNear) chipRow?.let { side.addView(it,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }) }
-@@ -953,14 +980,17 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -953,14 +981,17 @@ class MobileHomeFragment : ToolbarFragment() {
                  } else {
                  power = action("") { if(!powerCovered()) host().toggleService() }.apply {
                      contentDescription = getString(R.string.qmobile_connect)
@@ -1019,7 +1092,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                              val reach=MobileOrbArtwork.radius(disc)*1.35f
                              val dx=event.x-width/2f; val dy=event.y-MobileOrbArtwork.centerY(disc)
                              if(dx*dx+dy*dy>reach*reach) return@setOnTouchListener true
-@@ -986,16 +1016,21 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -986,16 +1017,21 @@ class MobileHomeFragment : ToolbarFragment() {
                  run {
                      // A smaller button right under the subscription: the servers and the subscription's actions keep the screen.
                      // The view spans the row and is 16 dp taller than the disc: the subscription and server line has the width.
@@ -1044,7 +1117,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                      // The subscription and the server on two lines when one is too narrow for them: the button grows by that line.
                      artwork?.linesChanged={ lines -> centre.post {
                          val extra=if(lines==2) dp(16) else 0
-@@ -1031,6 +1066,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1031,6 +1067,7 @@ class MobileHomeFragment : ToolbarFragment() {
                      else side.addView(statusRow,LinearLayout.LayoutParams(-1,dp(34)))
                      }
                  }
@@ -1052,7 +1125,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                  updateState()
                  val imports = LinearLayout(requireContext())
                  fun importButton(label: String, icon: Int, callback: () -> Unit) = LinearLayout(requireContext()).apply {
-@@ -1085,7 +1121,8 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1085,7 +1122,8 @@ class MobileHomeFragment : ToolbarFragment() {
                  run {
                      val area=FrameLayout(requireContext()).also { serverDropArea=it }
                      area.addView(serverPanel,FrameLayout.LayoutParams(-1,-2))
@@ -1062,15 +1135,31 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                      val tabs=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(6),0,0) }
                      fun indicator(left: Boolean)=ImageView(requireContext()).apply {
                          setImageResource(R.drawable.ic_mobile_chevron)
-@@ -1233,6 +1270,7 @@ class MobileHomeFragment : ToolbarFragment() {
-             nextProfileReorders.keys.retainAll(setOf(focusedGroup))
- 
-             var firstGroup = true
-+            var minimalActionsPlaced = false
-             for ((groupIndex, pair) in groups.withIndex()) {
-                 val (group,profiles)=pair
-                 if(group.id!=focusedGroup) continue
-@@ -1280,10 +1318,13 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1203,6 +1241,23 @@ class MobileHomeFragment : ToolbarFragment() {
+             }
+             pickerGroups=groups.map { it.first }
+             groupChip?.text=pickerGroups.firstOrNull { it.id==focusedGroup }?.displayName().orEmpty()
++            if (minimalHome) minimalChipActions?.let { actions ->
++                // These controls belong to the current subscription, not the cached server rows.
++                actions.removeAllViews()
++                nextRefreshButtons.clear()
++                pickerGroups.firstOrNull { it.id == focusedGroup }?.let { group ->
++                    if (group.isSubscription) {
++                        val refresh = iconAction(R.drawable.ic_mobile_refresh, getString(R.string.qmobile_refresh)) {
++                            SubscriptionClient.refreshGroup(group.id, false)
++                        }.apply { isEnabled = !SubscriptionClient.states.value.containsKey(group.id) }
++                        nextRefreshButtons[group.id] = refresh
++                        actions.addView(refresh, LinearLayout.LayoutParams(dp(40), dp(48)))
++                    }
++                    lateinit var more: ImageButton
++                    more = iconAction(R.drawable.ic_mobile_more, getString(R.string.qmobile_more)) { groupMenu(group, more) }
++                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
++                }
++            }
+             val serverColumn=serverRows ?: return@launch
+             if(risenGroup!=focusedGroup) {
+                 // Only a change of subscription rises; the first render is simply there.
+@@ -1280,10 +1335,13 @@ class MobileHomeFragment : ToolbarFragment() {
                  }
                  val heading = LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,0,0); isFocusable=true }
                  heading.addView(arrow,LinearLayout.LayoutParams(dp(20),dp(20)))
@@ -1088,28 +1177,24 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                  run {
                      val gestures=GestureDetector(requireContext(),object:GestureDetector.SimpleOnGestureListener() {
                          override fun onDown(event:MotionEvent)=true
-@@ -1300,16 +1341,25 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1300,16 +1358,19 @@ class MobileHomeFragment : ToolbarFragment() {
                      })
                      heading.setOnTouchListener { _,event -> gestures.onTouchEvent(event) }
                  }
 -                title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
 -                if (group.isSubscription) title.addView(iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this },LinearLayout.LayoutParams(dp(40),dp(48)))
 -                title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
-+                val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
-                 lateinit var more: ImageButton
-                 more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
+-                lateinit var more: ImageButton
+-                more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
 -                title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
 -                head.addView(title)
-+                val actions = minimalChipActions
-+                if (minimalHome && actions != null && !minimalActionsPlaced) {
-+                    // One line: the group picker, add, refresh and the menu share the same row.
-+                    minimalActionsPlaced = true
-+                    refresh?.let { actions.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
-+                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
-+                } else {
++                if (!minimalHome) {
++                    val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
++                    lateinit var more: ImageButton
++                    more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
 +                    title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
 +                    refresh?.let { title.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
-+                    if(!minimalHome) title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
++                    title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
 +                    title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
 +                    head.addView(title)
 +                }
@@ -1120,7 +1205,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                      // Wraps rather than cutting the Xray part of the label off.
                      maxLines=3
                      setPadding(dp(8),dp(4),dp(10),dp(4));compoundDrawablePadding=dp(6);gravity=Gravity.CENTER_VERTICAL
-@@ -1318,7 +1368,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1318,7 +1379,7 @@ class MobileHomeFragment : ToolbarFragment() {
                      contentDescription=signature.route
                      isFocusable=true;setOnClickListener { routePicker() };MobileFeedback.apply(this,radius=12f)
                  },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6);bottomMargin=dp(4) })
@@ -1129,7 +1214,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
                      val quota=group.subInfo
                      val traffic=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,dp(12),dp(8)) }
                      traffic.addView(iconAction(R.drawable.ic_mobile_info,getString(R.string.qmobile_subscription_info)) {
-@@ -1476,6 +1526,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1476,6 +1537,7 @@ class MobileHomeFragment : ToolbarFragment() {
              updateSubscriptionButtons()
              updateLatencies()
              updateState()
@@ -1137,7 +1222,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
              // Commit only a completed render: a cancelled page build must be retried.
              renderedStructure=structure
              completed=true
-@@ -1520,7 +1571,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1520,7 +1582,7 @@ class MobileHomeFragment : ToolbarFragment() {
              host().toggleService()
          }
          // The row under the button holds nothing while disconnected: it gives its room to the list; the dock's speeds keep theirs.
@@ -1146,7 +1231,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
          if(!state.connected) { lastDown=0L;lastUp=0L }
          modeSwitches.forEach { (mode,switch) -> switch.isChecked=(state.canStop || restartAfterStop) && DataStore.serviceMode==mode }
          val test=TestSessionClient.state.value
-@@ -1545,7 +1596,8 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1545,7 +1607,8 @@ class MobileHomeFragment : ToolbarFragment() {
          power?.setTextColor(muted)
          (power?.background as? MobilePowerArtwork)?.connected=state.connected
          (power?.background as? MobilePowerArtwork)?.connecting=state==app.rawline.mobile.bg.BaseService.State.Connecting
@@ -1156,7 +1241,7 @@ index 5836c5e31506e13ea744e8a4f216e50a33963321..a9f496e4d9f57c33e09979c12fd8565a
          power?.apply {
              // The cell in a removed switch's place keeps its own alignment.
              if(tag!=SWITCH_CELL) { textSize=13f;gravity=Gravity.CENTER;setPadding(0,if(background is MobilePowerArtwork) dp(75*MobileHomeLayout.orbSize(false)/188) else dp(8),0,0) }
-@@ -1572,9 +1624,11 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1572,9 +1635,11 @@ class MobileHomeFragment : ToolbarFragment() {
                  workersText=snapshot?.takeIf { it.total>0 && !testing }?.let { "${it.active}/${it.total}" }.orEmpty()
                  if(this is MobileOrbArtwork) {
                      // The selected subscription and server, connected or not, on their own line under the button.

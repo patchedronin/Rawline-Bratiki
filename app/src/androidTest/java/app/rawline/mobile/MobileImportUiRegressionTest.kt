@@ -144,6 +144,60 @@ class MobileImportUiRegressionTest {
         }
     }
 
+    @Test fun subscriptionActionsReplacePreviousGroupAndSurviveRetainedRows() {
+        val previous = app.rawline.mobile.database.GroupRepo.currentId()
+        val groups = listOf(
+            ProxyGroup(name = "Toolbar subscription A", url = "https://example.invalid/a", skipAutoUpdate = true),
+            ProxyGroup(name = "Toolbar subscription B", url = "https://example.invalid/b", skipAutoUpdate = true),
+            ProxyGroup(name = "Toolbar local group"),
+        )
+        groups.forEach { it.id = SagerDatabase.groupDao.insert(it) }
+        app.rawline.mobile.database.GroupRepo.setCurrent(groups.first().id)
+        val activity = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
+            .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)) as MainActivity
+        try {
+            ui {
+                if (android.os.Build.VERSION.SDK_INT >= 27) {
+                    activity.setShowWhenLocked(true)
+                    activity.setTurnScreenOn(true)
+                }
+                activity.window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+            }
+            fun home() = activity.supportFragmentManager.findFragmentById(R.id.fragment_holder) as? MobileHomeFragment
+            fun assertToolbar(group: ProxyGroup) {
+                await { ui {
+                    val chip = descendants(activity.window.decorView).filterIsInstance<TextView>()
+                        .firstOrNull { it.text == group.name } ?: return@ui false
+                    val row = chip.parent as ViewGroup
+                    val refresh = descendants(row).filter { it.contentDescription == context.getString(R.string.qmobile_refresh) }
+                    val menu = descendants(row).filter { it.contentDescription == context.getString(R.string.qmobile_more) }
+                    refresh.size == (if (group.isSubscription) 1 else 0) && menu.size == 1 &&
+                        chip.width > 80 * context.resources.displayMetrics.density
+                } }
+            }
+            for (group in listOf(groups[0], groups[1], groups[0], groups[2], groups[1], groups[0])) {
+                ui { app.rawline.mobile.database.GroupRepo.setCurrent(group.id); home()?.refresh() }
+                assertToolbar(group)
+            }
+            // Changing another group rebuilds the toolbar while the current server rows are retained.
+            groups[1].name = "Renamed inactive subscription"
+            SagerDatabase.groupDao.update(groups[1])
+            await { ui { home() != null } }
+            ui { home()!!.refresh() }
+            assertToolbar(groups[0])
+            val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+            try {
+                File(context.filesDir, "subscription-toolbar-fixed.png").outputStream().use {
+                    screenshot.compress(android.graphics.Bitmap.CompressFormat.PNG, 100, it)
+                }
+            } finally { screenshot.recycle() }
+        } finally {
+            ui { activity.finish() }
+            app.rawline.mobile.database.GroupRepo.setCurrent(previous)
+            groups.forEach { SagerDatabase.groupDao.deleteById(it.id) }
+        }
+    }
+
     @Test fun bottomServerReceivesWholeRowTouchWithLegacyControlsHidden() {
         val listMode=DataStore.mobileListMode
         DataStore.mobileListMode="list"
