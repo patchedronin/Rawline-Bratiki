@@ -183,6 +183,7 @@ jobs:
           except urllib.error.HTTPError as error:
               if error.code != 404:
                   raise
+              raise RuntimeError(f'Owner must create refs/tags/{tag} at verified source {meta["sourceSha"]} before signing; no release was created') from error
           tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
           def inspect(path):
               badging = subprocess.check_output([str(tools / 'aapt2'), 'dump', 'badging', str(path)], text=True)

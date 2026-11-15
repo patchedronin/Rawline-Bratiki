@@ -12,20 +12,22 @@
 
 1. Push reviewed source to `main`; the unsigned build runs automatically (revision 2).
 2. Open Actions → **Bratiki unsigned arm64 build** and wait for success. Copy its run ID from the URL. Build artifacts expire after 14 days.
-3. Dispatch **Bratiki isolated signing and release**, `run_id=<successful run>` and `revision=2`.
-4. Review the selected source commit and build provenance, then approve environment `release` in GitHub.
-5. Confirm Releases contains `rawline-1.1.4`, its APK, source commit links and embedded `rawline-update` metadata.
-6. Install the first channel-enabled APK manually over the existing mod. Future **Check updates** requests use this repository.
+3. Verify the build's `head_sha`, then create a lightweight `rawline-1.1.4` tag at that exact commit using the owner's GitHub account. GitHub rejects release creation by `GITHUB_TOKEN` when it also requests creation of a tag pointing to workflow changes. The signing workflow accepts only an existing tag at the verified source SHA.
+4. Dispatch **Bratiki isolated signing and release**, `run_id=<successful run>` and `revision=2`.
+5. Review the selected source commit and build provenance, then approve environment `release` in GitHub.
+6. Confirm Releases contains `rawline-1.1.4`, its APK, source commit links and embedded `rawline-update` metadata.
+7. Install the first channel-enabled APK manually over the existing mod. Future **Check updates** requests use this repository.
 
 GitHub CLI equivalents:
 
 ```sh
 gh workflow run bratiki-build.yml -R patchedronin/Rawline-Bratiki -f revision=2
 gh run list -R patchedronin/Rawline-Bratiki --workflow bratiki-build.yml
+gh api -X POST repos/patchedronin/Rawline-Bratiki/git/refs -f ref=refs/tags/rawline-1.1.4 -f sha=VERIFIED_BUILD_SOURCE_SHA
 gh workflow run bratiki-release.yml -R patchedronin/Rawline-Bratiki -f run_id=RUN_ID -f revision=2
 ```
 
-A release or tag that already exists is never replaced. If a publication is interrupted, inspect the draft, assets and tag manually. Delete an incomplete **unpublished** draft/tag only after verifying its provenance, then explicitly retry. Do not remove a published release to hide an error: ship a new, properly numbered version instead.
+An existing public release is never replaced; an existing source tag is accepted only if it points to the exact selected build commit. If publication is interrupted, inspect the draft, assets and tag manually. Delete an incomplete **unpublished** draft only after verifying its provenance, then explicitly retry. Do not remove a published release to hide an error: ship a new, properly numbered revision instead.
 
 ## Future upstream versions
 
