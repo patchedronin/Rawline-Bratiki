@@ -157,8 +157,13 @@ jobs:
               request = urllib.request.Request(url, data=payload, method=method, headers={
                   'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
                   'Content-Type': content_type, 'X-GitHub-Api-Version': '2022-11-28'})
-              with urllib.request.urlopen(request, timeout=180) as response:
-                  return json.load(response)
+              try:
+                  with urllib.request.urlopen(request, timeout=180) as response:
+                      return json.load(response)
+              except urllib.error.HTTPError as error:
+                  detail = error.read(16384).decode('utf-8', errors='replace')
+                  print(f'GitHub API HTTP {error.code}: {detail}')
+                  raise
           def absent(path):
               try:
                   api(path)
@@ -168,7 +173,16 @@ jobs:
                   raise
               raise RuntimeError('Tag or release already exists; nothing will be overwritten. Inspect it manually.')
           absent(f'repos/{repo}/releases/tags/{tag}')
-          absent(f'repos/{repo}/git/ref/tags/{tag}')
+          # The owner may pre-create the exact source tag when GitHub restricts GITHUB_TOKEN tag creation.
+          tag_request = urllib.request.Request(f'https://api.github.com/repos/{repo}/git/ref/tags/{tag}',
+              headers={'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json'})
+          try:
+              with urllib.request.urlopen(tag_request, timeout=60) as response:
+                  existing_tag = json.load(response)
+              assert existing_tag['object']['type'] == 'commit' and existing_tag['object']['sha'] == meta['sourceSha'], 'Existing tag has different source'
+          except urllib.error.HTTPError as error:
+              if error.code != 404:
+                  raise
           tools = Path(os.environ['ANDROID_HOME']) / 'build-tools/35.0.0'
           def inspect(path):
               badging = subprocess.check_output([str(tools / 'aapt2'), 'dump', 'badging', str(path)], text=True)
