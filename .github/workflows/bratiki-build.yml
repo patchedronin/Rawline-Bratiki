@@ -1,0 +1,70 @@
+name: Bratiki unsigned arm64 build
+run-name: Bratiki unsigned arm64 revision ${{ inputs.revision || 2 }}
+on:
+  push:
+    branches: [main]
+    paths-ignore: ['**/*.md']
+  workflow_dispatch:
+    inputs:
+      revision:
+        description: 'Build revision (integer 2..998; increase for each APK of the same version)'
+        type: number
+        default: 2
+        required: true
+permissions:
+  contents: read
+concurrency:
+  group: bratiki-build-${{ github.ref }}
+  cancel-in-progress: false
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main' && github.repository == 'patchedronin/Rawline-Bratiki'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 150
+    env:
+      RAWLINE_CHANNEL: stable
+      RAWLINE_BUILD: ${{ github.event_name == 'workflow_dispatch' && format('{0}', inputs.revision) || '2' }}
+      RAWLINE_SIGN: 'false'
+      UPDATE_SIGNER_SHA256: b3729dc9e7538e42f95e96b8f61c400ad9f4e39d309b23c7e4594043fd0e134c
+      CGO_LDFLAGS_ALLOW: '-l:libcronet\.a'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+      - name: Validate revision
+        run: |
+          python3 - <<'PY'
+          import os, re
+          value = os.environ['RAWLINE_BUILD']
+          if not re.fullmatch(r'[0-9]+', value) or not 2 <= int(value) <= 998:
+              raise SystemExit('Revision must be an integer in 2..998')
+          PY
+      - uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install SDK signing and inspection tools
+        run: |
+          set -euo pipefail
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" 'build-tools;35.0.0'
+      - name: Verify pinned upstream APK and stage runtime payloads
+        run: python3 bratiki/scripts/build.py stage --apksigner "$ANDROID_HOME/build-tools/35.0.0/apksigner"
+      - name: Build matching pinned core and replace staged schema
+        uses: ./.github/actions/rawline-core
+      - name: Build unsigned arm64 OSS release without signing credentials
+        run: |
+          set -euo pipefail
+          unset SIGNING_KEYSTORE_B64 SIGNING_STORE_PASSWORD SIGNING_KEY_PASSWORD SIGNING_KEY_ALIAS
+          chmod +x gradlew
+          ./gradlew --no-daemon --stacktrace -PrawlineAbis=arm64-v8a :app:assembleOssRelease
+      - name: Package attributable unsigned artifact
+        run: |
+          python3 bratiki/scripts/build.py package --revision "$RAWLINE_BUILD" \
+            --apksigner "$ANDROID_HOME/build-tools/35.0.0/apksigner" \
+            --aapt2 "$ANDROID_HOME/build-tools/35.0.0/aapt2"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: bratiki-unsigned
+          path: bratiki-dist/
+          if-no-files-found: error
+          retention-days: 14

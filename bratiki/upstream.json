@@ -1,0 +1,17 @@
+{
+  "schema": 1,
+  "repository": "ttrroyy/RawlineMobile",
+  "tag": "rawline-1.1.4",
+  "commit": "12295381f4a749c1555c56e0e4dbf9b44f4330be",
+  "versionName": "1.1.4",
+  "versionIndex": 110,
+  "coreRef": "b8d5b41e4482bef0e8e1c3b10fe5aa6c75f143c7",
+  "minSdk": 24,
+  "signerSha256": "be9ab67830ce9f33b9ee808a94df999e43bce6acca58949cb8cdb6be1452b005",
+  "apk": {
+    "name": "RawlineMobile-1.1.4-arm64-v8a.apk",
+    "size": 159883524,
+    "sha256": "d1bb092ce52302fded5b9b60e4ffdf79efc3b2aeb58747f47e8b7262a2a44306",
+    "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/RawlineMobile-1.1.4-arm64-v8a.apk"
+  }
+}

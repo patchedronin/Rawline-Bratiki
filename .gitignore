@@ -21,3 +21,20 @@ local.properties
 
 # python bytecode
 __pycache__/
+
+# Local device exports, signing material and generated transports must never be committed.
+*.rwlbackup
+*.thrbackup
+*.apk
+*.idsig
+*.log
+.env
+.env.*
+*.pem
+*.key
+*.pfx
+/keys/
+/deployment/carriers/
+/bratiki/dist/
+/bratiki/work/
+/bratiki-dist/

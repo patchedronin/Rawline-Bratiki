@@ -1,0 +1,8 @@
+<resources>
+    <string name="local_power_skin">Оформление кнопки подключения</string>
+    <string name="local_power_arcs">Интенсивность молний</string>
+    <string name="local_power_furnace">Зарево ТЭЦ</string>
+    <string name="local_power_snow">Снег / пепел</string>
+    <string name="local_power_effects_summary">Эффекты двора; настройки VPN не меняются</string>
+    <string-array name="local_power_skins"><item>Люк</item><item>Двор с ТЭЦ</item></string-array>
+</resources>

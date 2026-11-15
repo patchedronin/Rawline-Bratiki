@@ -1,0 +1,9 @@
+<resources>
+    <string name="local_power_skin">Connect button appearance</string>
+    <string name="local_power_arcs">Lightning intensity</string>
+    <string name="local_power_furnace">Power plant glow</string>
+    <string name="local_power_snow">Snow / ash</string>
+    <string name="local_power_effects_summary">Visual effects for the courtyard; no changes to VPN settings</string>
+    <string-array name="local_power_skins"><item>Hatch</item><item>Courtyard with power plant</item></string-array>
+    <string-array name="local_power_skin_values"><item>hatch</item><item>courtyard</item></string-array>
+</resources>

@@ -14,45 +14,81 @@ object MobileStyle {
     const val modern = true
 }
 
+/** A theme loaded from a JSON file; null fields fall back to the selected built-in palette. */
+object MobileThemes {
+    private const val KEY = "qmobileThemeJson"
+    data class Theme(
+        val name: String,
+        val accent: Int?, val background: Int?, val surface: Int?, val solid: Int?,
+        val toolbar: Int?, val text: Int?, val muted: Int?, val well: Int?, val frosted: Int?,
+        val rowDp: Int?, val cardDp: Int?, val wellDp: Int?,
+    )
+    @Volatile private var raw: String? = null
+    @Volatile private var parsed: Theme? = null
+    @Volatile private var loaded = false
+    val current: Theme? get() {
+        val value = DataStore.configurationStore.getString(KEY).orEmpty()
+        if (!loaded || value != raw) {
+            raw = value
+            parsed = runCatching { parse(value) }.getOrNull()
+            loaded = true
+        }
+        return parsed
+    }
+    fun save(json: String) { DataStore.configurationStore.putString(KEY, json); loaded = false }
+    fun clear() { DataStore.configurationStore.putString(KEY, ""); loaded = false }
+    fun name() = current?.name.orEmpty()
+    private fun parse(json: String): Theme? {
+        if (json.isBlank()) return null
+        val o = org.json.JSONObject(json)
+        fun color(key: String) = o.optString(key).takeIf { it.isNotBlank() }?.let { Color.parseColor(it) }
+        fun radius(key: String) = o.optInt(key, 0).takeIf { it in 0..64 }
+        return Theme(o.optString("name", "Theme"), color("accent"), color("background"), color("surface"),
+            color("solid"), color("toolbar"), color("text"), color("muted"), color("well"), color("frosted"),
+            radius("rowDp"), radius("cardDp"), radius("wellDp"))
+    }
+}
+
 object MobilePalette {
+    private val custom get() = MobileThemes.current
     /** Every night is OLED black, except Pastel's, which stays plum. */
     val oled get() = Theme.usingNightMode() && !MobileStyle.pastel
     val light get() = !oled && !Theme.usingNightMode()
     private val lilac = Color.rgb(0x7C, 0x6B, 0xF2)
-    val background get() = when {
+    val background get() = custom?.background ?: when {
         MobileStyle.pastel && light -> Color.rgb(255, 228, 214)
         MobileStyle.pastel -> Color.rgb(22, 20, 31)
         light -> Color.WHITE
         else -> Color.BLACK
     }
     /** Translucent in the new style: anything that has to hide what is under it uses [solid] or [frosted]. */
-    val surface get() = when {
+    val surface get() = custom?.surface ?: when {
         MobileStyle.pastel && light -> Color.WHITE
         MobileStyle.pastel -> Color.rgb(42, 36, 62)
         light -> Color.argb(190, 255, 255, 255)
         else -> Color.argb(18, 255, 255, 255)
     }
-    val solid get() = when {
+    val solid get() = custom?.solid ?: when {
         MobileStyle.pastel && light -> Color.rgb(255, 247, 252)
         MobileStyle.pastel -> Color.rgb(36, 31, 51)
         light -> Color.rgb(243, 243, 246)
         else -> Color.rgb(21, 21, 24)
     }
-    val toolbar get() = Color.TRANSPARENT
-    val text get() = when {
+    val toolbar get() = custom?.toolbar ?: Color.TRANSPARENT
+    val text get() = custom?.text ?: when {
         MobileStyle.pastel && light -> Color.rgb(0x1B, 0x1C, 0x2A)
         MobileStyle.pastel -> Color.rgb(0xF4, 0xF2, 0xFA)
         light -> Color.rgb(10, 10, 11)
         else -> Color.rgb(245, 245, 247)
     }
-    val muted get() = when {
+    val muted get() = custom?.muted ?: when {
         MobileStyle.pastel && light -> Color.rgb(110, 108, 136)
         MobileStyle.pastel -> Color.rgb(176, 170, 198)
         light -> Color.rgb(105, 105, 112)
         else -> Color.rgb(142, 142, 150)
     }
     /** The dark field inside a card; on true black a lighter one, or it would vanish. */
-    val well get() = when {
+    val well get() = custom?.well ?: when {
         MobileStyle.pastel && light -> Color.argb(18, 124, 107, 242)
         MobileStyle.pastel -> Color.argb(28, 255, 255, 255)
         light -> Color.argb(16, 0, 0, 0)
@@ -61,16 +97,16 @@ object MobilePalette {
     /** The editor's small round buttons: solid, a step lighter (or darker) than the screen, in either theme. */
     val badge get() = androidx.core.graphics.ColorUtils.blendARGB(background, text, if (light) .09f else .2f)
     /** Corner radii in dp. */
-    const val rowDp = 20
-    const val cardDp = 28
-    const val wellDp = 18
+    val rowDp get() = custom?.rowDp ?: 20
+    val cardDp get() = custom?.cardDp ?: 28
+    val wellDp get() = custom?.wellDp ?: 18
     /** A screen's own colour: the screens let the backdrop through. */
     val screen = Color.TRANSPARENT
     /** Over content that must stay readable: notices, dialogs, sheets. */
     /** The blur behind sheets and dialogs: enough to lift them off the screen, while what is behind stays recognisable. */
     const val BLUR_DP = 20
     val windowDim get() = if (light) .35f else .6f
-    val frosted get() = when {
+    val frosted get() = custom?.frosted ?: when {
         MobileStyle.pastel && light -> Color.argb(248, 255, 250, 252)
         MobileStyle.pastel -> Color.argb(248, 24, 20, 36)
         light -> Color.argb(248, 250, 250, 252)
@@ -78,7 +114,7 @@ object MobilePalette {
     }
     val outline get() = androidx.core.graphics.ColorUtils.setAlphaComponent(muted,55)
     @Suppress("UNUSED_PARAMETER")
-    fun accent(context: Context) = if (MobileStyle.pastel) lilac else text
+    fun accent(context: Context) = custom?.accent ?: if (MobileStyle.pastel) lilac else text
 
     /** A row or button: every list row and action in the app. */
     fun rowShape(context: Context): android.graphics.drawable.Drawable = shape(context, rowDp)
@@ -88,7 +124,7 @@ object MobilePalette {
     fun selectedShape(context: Context, color: Int = accent(context)): android.graphics.drawable.Drawable {
         val density = context.resources.displayMetrics.density
         // The row's own plate a step towards lilac, with a lilac edge: set apart from the rows around it, not a blue wash.
-        if (MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
+        if (custom == null && MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
             setColor(androidx.core.graphics.ColorUtils.blendARGB(if (light) Color.WHITE else Color.rgb(42, 36, 62), lilac, if (light) .12f else .22f))
             setStroke((1.5f * density).toInt().coerceAtLeast(1), androidx.core.graphics.ColorUtils.setAlphaComponent(lilac, if (light) 200 else 230))
             cornerRadius = rowDp * density
@@ -106,7 +142,7 @@ object MobilePalette {
     }
     private fun shape(context: Context, radius: Int): android.graphics.drawable.Drawable {
         val density = context.resources.displayMetrics.density
-        if (MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
+        if (custom == null && MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
             setColor(if (light) Color.WHITE else Color.rgb(42, 36, 62))
             cornerRadius = radius * density
         }

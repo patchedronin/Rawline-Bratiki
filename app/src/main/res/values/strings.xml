@@ -2820,4 +2820,9 @@
     <string name="sniff_route_only_sum">Use the sniffed SNI or host only to pick the route, without replacing the connection address. Keep it on unless the server has to route by domain, for example in a cascade</string>
     <string name="http_proxy_auth">HTTP proxy authentication</string>
     <string name="http_proxy_auth_sum">Protect the HTTP proxy with the same login and password. Applies only while access from other devices is on</string>
+    <string name="qmobile_theme_file">Theme from file</string>
+    <string name="qmobile_theme_file_summary">A JSON palette applied without rebuilding the app</string>
+    <string name="qmobile_theme_reset">Restore the built-in theme</string>
+    <string name="qmobile_theme_invalid">Could not read the theme: a valid JSON file is required</string>
+    <string name="qmobile_theme_loaded">Theme “%1$s” applied</string>
 </resources>

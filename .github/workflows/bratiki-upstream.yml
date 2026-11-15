@@ -1,0 +1,66 @@
+name: Bratiki upstream watcher
+on:
+  schedule:
+    - cron: '23 8 * * *'
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: 'Notify only, or attempt a complete three-way source migration PR'
+        type: choice
+        options: [check, prepare-update]
+        default: check
+        required: true
+      tag:
+        description: 'Optional stable rawline-X.Y.Z tag (blank means latest stable)'
+        type: string
+        required: false
+permissions: {}
+concurrency:
+  group: bratiki-upstream
+  cancel-in-progress: false
+jobs:
+  notify:
+    if: >-
+      github.repository == 'patchedronin/Rawline-Bratiki' && github.ref == 'refs/heads/main' &&
+      (github.event_name == 'schedule' || inputs.mode == 'check')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          persist-credentials: false
+      - name: Notify without executing upstream source
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ inputs.tag }}
+        run: |
+          args=()
+          if [[ -n "$UPSTREAM_TAG" ]]; then args+=(--tag "$UPSTREAM_TAG"); fi
+          python3 bratiki/scripts/upstream.py check --notify "${args[@]}"
+  prepare:
+    if: >-
+      github.repository == 'patchedronin/Rawline-Bratiki' && github.ref == 'refs/heads/main' &&
+      github.event_name == 'workflow_dispatch' && inputs.mode == 'prepare-update'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+      pull-requests: write
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Apply complete patch and create reviewed source-sync PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_TAG: ${{ inputs.tag }}
+        run: |
+          args=()
+          if [[ -n "$UPSTREAM_TAG" ]]; then args+=(--tag "$UPSTREAM_TAG"); fi
+          python3 bratiki/scripts/upstream.py prepare-update --publish --notify "${args[@]}"

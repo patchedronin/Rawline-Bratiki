@@ -1,7 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
+<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:android="http://schemas.android.com/apk/res/android">
  <PreferenceCategory app:title="@string/settings_appearance">
   <moe.matsuri.nb4a.ui.SimpleMenuPreference app:key="qmobileSurfaceTheme" app:icon="@drawable/ic_mobile_theme" app:title="@string/theme" app:persistent="false" app:entries="@array/qmobile_surface_themes_new" app:entryValues="@array/qmobile_surface_values_new" app:useSimpleSummaryProvider="true" />
+  <Preference app:key="qmobileThemeFile" app:icon="@drawable/ic_mobile_theme" app:title="@string/qmobile_theme_file" app:summary="@string/qmobile_theme_file_summary" />
+  <Preference app:key="qmobileThemeReset" app:icon="@drawable/ic_mobile_theme" app:title="@string/qmobile_theme_reset" app:persistent="false" />
+  <moe.matsuri.nb4a.ui.SimpleMenuPreference app:key="localPowerSkin" app:icon="@drawable/ic_mobile_theme" app:title="@string/local_power_skin" app:defaultValue="courtyard" app:entries="@array/local_power_skins" app:entryValues="@array/local_power_skin_values" app:useSimpleSummaryProvider="true" />
+  <androidx.preference.SeekBarPreference app:key="localPowerArcs" app:title="@string/local_power_arcs" app:defaultValue="100" app:min="0" android:max="180" app:showSeekBarValue="true" app:seekBarIncrement="10" />
+  <androidx.preference.SeekBarPreference app:key="localPowerFurnace" app:title="@string/local_power_furnace" app:defaultValue="100" app:min="0" android:max="160" app:showSeekBarValue="true" app:seekBarIncrement="10" />
+  <androidx.preference.SeekBarPreference app:key="localPowerSnow" app:title="@string/local_power_snow" app:summary="@string/local_power_effects_summary" app:defaultValue="75" app:min="0" android:max="150" app:showSeekBarValue="true" app:seekBarIncrement="25" />
   <Preference app:key="qmobileEditLayout" app:icon="@drawable/ic_mobile_dock_bottom" app:title="@string/qmobile_edit_layout" app:persistent="false" />
   <moe.matsuri.nb4a.ui.SimpleMenuPreference app:defaultValue="" app:entries="@array/language_entries" app:entryValues="@array/language_values" app:key="appLanguage" app:icon="@drawable/ic_mobile_language" app:title="@string/language" app:useSimpleSummaryProvider="true" />
  </PreferenceCategory>

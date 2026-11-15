@@ -6,6 +6,8 @@ import android.net.Uri
 import android.os.Build
 import android.provider.Settings
 import android.view.View
+import android.widget.Toast
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.app.ActivityCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.preference.MultiSelectListPreference
@@ -116,6 +118,23 @@ class GeneralSettingsFragment : SettingsScreenFragment(R.xml.settings_general) {
 /** Theme, language, profile list and notification options (all Android-only). */
 class AppearanceSettingsFragment : SettingsScreenFragment(R.xml.settings_appearance) {
 
+    /** A theme JSON chosen from storage: stored as text, so it survives restarts without a rebuild. */
+    private val pickTheme = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri == null) return@registerForActivityResult
+        val context = requireContext()
+        val text = runCatching {
+            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
+        }.getOrNull()
+        val parsed = text?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
+        if (text == null || parsed == null) {
+            Toast.makeText(context, R.string.qmobile_theme_invalid, Toast.LENGTH_LONG).show()
+            return@registerForActivityResult
+        }
+        app.rawline.mobile.ui.MobileThemes.save(text)
+        Toast.makeText(context, context.getString(R.string.qmobile_theme_loaded, parsed.optString("name", "")), Toast.LENGTH_SHORT).show()
+        applyThemeInstantly()
+    }
+
     override fun onViewCreated(view: View, savedInstanceState: android.os.Bundle?) {
         super.onViewCreated(view, savedInstanceState)
         findPreference<SimpleMenuPreference>("qmobileSurfaceTheme")?.let(::showSurfaceChoice)
@@ -128,6 +147,32 @@ class AppearanceSettingsFragment : SettingsScreenFragment(R.xml.settings_appeara
     }
 
     override fun bind() {
+        pref<SimpleMenuPreference>(app.rawline.mobile.ui.PowerButtonStyle.SKIN).setOnPreferenceChangeListener { _, _ ->
+            applyThemeInstantly()
+            true
+        }
+        for (key in listOf(app.rawline.mobile.ui.PowerButtonStyle.ARCS,
+            app.rawline.mobile.ui.PowerButtonStyle.FURNACE, app.rawline.mobile.ui.PowerButtonStyle.SNOW)) {
+            pref<androidx.preference.SeekBarPreference>(key).setOnPreferenceChangeListener { _, _ ->
+                applyThemeInstantly()
+                true
+            }
+        }
+        pref<Preference>("qmobileThemeFile").apply {
+            summary = app.rawline.mobile.ui.MobileThemes.name().ifEmpty { getString(R.string.qmobile_theme_file_summary) }
+            setOnPreferenceClickListener {
+                runCatching { pickTheme.launch(arrayOf("application/json", "text/plain", "*/*")) }
+                true
+            }
+        }
+        pref<Preference>("qmobileThemeReset").apply {
+            isVisible = app.rawline.mobile.ui.MobileThemes.name().isNotEmpty()
+            setOnPreferenceClickListener {
+                app.rawline.mobile.ui.MobileThemes.clear()
+                applyThemeInstantly()
+                true
+            }
+        }
         pref<Preference>("qmobileEditLayout").setOnPreferenceClickListener {
             startActivity(android.content.Intent(requireContext(), app.rawline.mobile.ui.MobileLayoutEditorActivity::class.java)); true
         }

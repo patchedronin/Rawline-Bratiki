@@ -74,6 +74,11 @@ class MobileHomeFragment : ToolbarFragment() {
     private var content: LinearLayout? = null
     private var power: TextView? = null
     private var currentCheck: TextView? = null
+    /** Simplified home for this build: only the power button, servers and the subscription refresh. */
+    private val minimalHome = true
+    private var minimalStatusRow: View? = null
+    private var minimalChipActions: LinearLayout? = null
+    private var minimalBlock: View? = null
     private var updatesTile: ImageButton? = null
     private var homeTitle: TextView? = null
     private var modeSwitches: Map<String,androidx.appcompat.widget.SwitchCompat> = emptyMap()
@@ -377,6 +382,23 @@ class MobileHomeFragment : ToolbarFragment() {
     private var observer: InvalidationTracker.Observer? = null
     private var openSwipe: MobileSwipeTile? = null
     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
+    /** The pinned block shows at most five servers; more scroll inside it. */
+    private fun sizeMinimalServerList() {
+        val scroll = serverScrollView ?: return
+        val row = profileRows.values.firstOrNull()?.parent as? View ?: return
+        if (row.height <= 0) return
+        val rows = profileRows.size.coerceIn(1, 5)
+        val target = (row.height + dp(3)) * rows + dp(2)
+        if (scroll.height != target) scroll.layoutParams = scroll.layoutParams.apply { height = target }
+        val nav = androidx.core.view.ViewCompat.getRootWindowInsets(scroll)
+            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
+        minimalBlock?.let { block ->
+            (block.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
+                val margin = nav + dp(4)
+                if (params.bottomMargin != margin) { params.bottomMargin = margin; block.layoutParams = params }
+            }
+        }
+    }
     private fun tile(selected: Boolean = false): android.graphics.drawable.Drawable {
         return if(selected) MobilePalette.selectedShape(requireContext(),blue) else MobilePalette.rowShape(requireContext())
     }
@@ -607,7 +629,8 @@ class MobileHomeFragment : ToolbarFragment() {
     fun updateSpeed(down: Long, up: Long) {
         if(!isAdded) return
         lastDown=down;lastUp=up
-        sheetSpeed?.visibility=View.VISIBLE
+        if(minimalHome) { sheetSpeed?.visibility=View.GONE; sheetDown?.visibility=View.GONE; sheetUp?.visibility=View.GONE }
+        else sheetSpeed?.visibility=View.VISIBLE
         sheetDown?.text="↓ "+rateText(down)
         sheetUp?.text="↑ "+rateText(up)
     }
@@ -896,6 +919,10 @@ class MobileHomeFragment : ToolbarFragment() {
                     }
                     addView(groupChip,LinearLayout.LayoutParams(0,dp(48),1f).apply { marginEnd=dp(8) })
                     addView(addTile,LinearLayout.LayoutParams(dp(48),dp(48)))
+                    if (minimalHome) {
+                        minimalChipActions = LinearLayout(requireContext()).apply { gravity = Gravity.CENTER_VERTICAL }
+                        addView(minimalChipActions, LinearLayout.LayoutParams(-2, dp(48)))
+                    }
                 }
                 val chipNear=chipNearList()
                 if(!chipBottom && !chipNear) chipRow?.let { side.addView(it,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }) }
@@ -953,14 +980,17 @@ class MobileHomeFragment : ToolbarFragment() {
                 } else {
                 power = action("") { if(!powerCovered()) host().toggleService() }.apply {
                     contentDescription = getString(R.string.qmobile_connect)
-                    background = MobileOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
+                    background = if (minimalHome) {
+                        if (PowerButtonStyle.courtyard) CourtyardOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
+                        else IndustrialOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
+                    } else MobileOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
                     // A remote or keyboard has no ripple to show where it stands.
                     setOnFocusChangeListener { button,focused -> (button.background as? MobilePowerArtwork)?.focused=focused }
                     var pressAnimator: android.animation.ValueAnimator? = null
                     setOnTouchListener { _, event ->
                         // The new button spans its row for the line under it: only a touch on the disc presses it.
                         if(event.actionMasked==android.view.MotionEvent.ACTION_DOWN) {
-                            val disc=dp(MobileHomeLayout.orbSize(true))
+                            val disc=dp(if (minimalHome) 340 else MobileHomeLayout.orbSize(true))
                             val reach=MobileOrbArtwork.radius(disc)*1.35f
                             val dx=event.x-width/2f; val dy=event.y-MobileOrbArtwork.centerY(disc)
                             if(dx*dx+dy*dy>reach*reach) return@setOnTouchListener true
@@ -986,16 +1016,21 @@ class MobileHomeFragment : ToolbarFragment() {
                 run {
                     // A smaller button right under the subscription: the servers and the subscription's actions keep the screen.
                     // The view spans the row and is 16 dp taller than the disc: the subscription and server line has the width.
-                    val orb=MobileHomeLayout.orbSize(true)
+                    val orb=if (minimalHome) 340 else MobileHomeLayout.orbSize(true)
                     val artwork=power?.background as? MobileOrbArtwork
                     artwork?.discSize=dp(orb)
-                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
+                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), (if(minimalHome) Gravity.CENTER else Gravity.TOP) or Gravity.CENTER_HORIZONTAL))
                     if(dockBottom) {
                         centre.background=MobileDockGlass(MobilePalette.cardDp*resources.displayMetrics.density,MobileOrbArtwork.centerY(dp(orb)),MobileOrbArtwork.radius(dp(orb))*1.26f,dp(104*orb/190).toFloat())
                         // The check and the speed hold the dock's lower corners: the line keeps between them.
                         power?.addOnLayoutChangeListener { view,_,_,_,_,_,_,_,_ -> artwork?.textRoom=(view.width-2*dp(14+92+6)).toFloat() }
                     }
-                    controlParent.addView(centre, LinearLayout.LayoutParams(-1, dp(if(dockBottom) orb+20 else orb+16)).apply { topMargin=dp(4) })
+                    if (minimalHome && !dockBottom) {
+                        // The button takes all the room above the pinned server block.
+                        controlParent.addView(centre, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin=dp(4) })
+                    } else {
+                        controlParent.addView(centre, LinearLayout.LayoutParams(-1, dp(if(dockBottom) orb+20 else orb+16)).apply { topMargin=dp(4) })
+                    }
                     // The subscription and the server on two lines when one is too narrow for them: the button grows by that line.
                     artwork?.linesChanged={ lines -> centre.post {
                         val extra=if(lines==2) dp(16) else 0
@@ -1031,6 +1066,7 @@ class MobileHomeFragment : ToolbarFragment() {
                     else side.addView(statusRow,LinearLayout.LayoutParams(-1,dp(34)))
                     }
                 }
+                minimalStatusRow=statusRow ?: sheetSpeed
                 updateState()
                 val imports = LinearLayout(requireContext())
                 fun importButton(label: String, icon: Int, callback: () -> Unit) = LinearLayout(requireContext()).apply {
@@ -1085,7 +1121,8 @@ class MobileHomeFragment : ToolbarFragment() {
                 run {
                     val area=FrameLayout(requireContext()).also { serverDropArea=it }
                     area.addView(serverPanel,FrameLayout.LayoutParams(-1,-2))
-                    body.addView(area,LinearLayout.LayoutParams(-1,0,1f))
+                    if (minimalHome) minimalBlock = area
+                    body.addView(area, if (minimalHome) LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(4) } else LinearLayout.LayoutParams(-1,0,1f))
                     val tabs=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(6),0,0) }
                     fun indicator(left: Boolean)=ImageView(requireContext()).apply {
                         setImageResource(R.drawable.ic_mobile_chevron)
@@ -1233,6 +1270,7 @@ class MobileHomeFragment : ToolbarFragment() {
             nextProfileReorders.keys.retainAll(setOf(focusedGroup))
 
             var firstGroup = true
+            var minimalActionsPlaced = false
             for ((groupIndex, pair) in groups.withIndex()) {
                 val (group,profiles)=pair
                 if(group.id!=focusedGroup) continue
@@ -1280,10 +1318,13 @@ class MobileHomeFragment : ToolbarFragment() {
                 }
                 val heading = LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,0,0); isFocusable=true }
                 heading.addView(arrow,LinearLayout.LayoutParams(dp(20),dp(20)))
-                val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
-                names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END })
-                if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
-                heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
+                // The group name already sits in the picker above: in the minimal home the header keeps only its actions.
+                if (!minimalHome) {
+                    val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
+                    names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END })
+                    if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
+                    heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
+                }
                 run {
                     val gestures=GestureDetector(requireContext(),object:GestureDetector.SimpleOnGestureListener() {
                         override fun onDown(event:MotionEvent)=true
@@ -1300,16 +1341,25 @@ class MobileHomeFragment : ToolbarFragment() {
                     })
                     heading.setOnTouchListener { _,event -> gestures.onTouchEvent(event) }
                 }
-                title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
-                if (group.isSubscription) title.addView(iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this },LinearLayout.LayoutParams(dp(40),dp(48)))
-                title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
+                val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
                 lateinit var more: ImageButton
                 more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
-                title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
-                head.addView(title)
+                val actions = minimalChipActions
+                if (minimalHome && actions != null && !minimalActionsPlaced) {
+                    // One line: the group picker, add, refresh and the menu share the same row.
+                    minimalActionsPlaced = true
+                    refresh?.let { actions.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
+                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
+                } else {
+                    title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
+                    refresh?.let { title.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
+                    if(!minimalHome) title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
+                    title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
+                    head.addView(title)
+                }
                 // Which routing this subscription's servers run with, one line above its card and notes.
                 // As wide as its text, so a press lights the line itself and not the whole width of the card.
-                if (signature.route.isNotEmpty()) head.addView(text(signature.route,11f,muted).apply {
+                if (!minimalHome && signature.route.isNotEmpty()) head.addView(text(signature.route,11f,muted).apply {
                     // Wraps rather than cutting the Xray part of the label off.
                     maxLines=3
                     setPadding(dp(8),dp(4),dp(10),dp(4));compoundDrawablePadding=dp(6);gravity=Gravity.CENTER_VERTICAL
@@ -1318,7 +1368,7 @@ class MobileHomeFragment : ToolbarFragment() {
                     contentDescription=signature.route
                     isFocusable=true;setOnClickListener { routePicker() };MobileFeedback.apply(this,radius=12f)
                 },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6);bottomMargin=dp(4) })
-                if (group.isSubscription && group.subOptions.showInfoCard) {
+                if (!minimalHome && group.isSubscription && group.subOptions.showInfoCard) {
                     val quota=group.subInfo
                     val traffic=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,dp(12),dp(8)) }
                     traffic.addView(iconAction(R.drawable.ic_mobile_info,getString(R.string.qmobile_subscription_info)) {
@@ -1476,6 +1526,7 @@ class MobileHomeFragment : ToolbarFragment() {
             updateSubscriptionButtons()
             updateLatencies()
             updateState()
+            if (minimalHome) serverScrollView?.post { sizeMinimalServerList() }
             // Commit only a completed render: a cancelled page build must be retried.
             renderedStructure=structure
             completed=true
@@ -1520,7 +1571,7 @@ class MobileHomeFragment : ToolbarFragment() {
             host().toggleService()
         }
         // The row under the button holds nothing while disconnected: it gives its room to the list; the dock's speeds keep theirs.
-        sheetSpeed?.visibility=if(state.connected) View.VISIBLE else if(sheetSpeed?.getTag(R.id.home_part)!=null) View.GONE else View.INVISIBLE
+        sheetSpeed?.visibility=if(minimalHome) View.GONE else if(state.connected) View.VISIBLE else if(sheetSpeed?.getTag(R.id.home_part)!=null) View.GONE else View.INVISIBLE
         if(!state.connected) { lastDown=0L;lastUp=0L }
         modeSwitches.forEach { (mode,switch) -> switch.isChecked=(state.canStop || restartAfterStop) && DataStore.serviceMode==mode }
         val test=TestSessionClient.state.value
@@ -1545,7 +1596,8 @@ class MobileHomeFragment : ToolbarFragment() {
         power?.setTextColor(muted)
         (power?.background as? MobilePowerArtwork)?.connected=state.connected
         (power?.background as? MobilePowerArtwork)?.connecting=state==app.rawline.mobile.bg.BaseService.State.Connecting
-        currentCheck?.visibility=if(state.connected) View.VISIBLE else View.INVISIBLE
+        currentCheck?.visibility=if(!minimalHome && state.connected) View.VISIBLE else View.GONE
+        if(minimalHome) { minimalStatusRow?.visibility=View.GONE; subscriptionTop?.visibility=View.GONE }
         power?.apply {
             // The cell in a removed switch's place keeps its own alignment.
             if(tag!=SWITCH_CELL) { textSize=13f;gravity=Gravity.CENTER;setPadding(0,if(background is MobilePowerArtwork) dp(75*MobileHomeLayout.orbSize(false)/188) else dp(8),0,0) }
@@ -1572,9 +1624,11 @@ class MobileHomeFragment : ToolbarFragment() {
                 workersText=snapshot?.takeIf { it.total>0 && !testing }?.let { "${it.active}/${it.total}" }.orEmpty()
                 if(this is MobileOrbArtwork) {
                     // The selected subscription and server, connected or not, on their own line under the button.
-                    val (group,server)=runningServer()
-                    groupText=group;serverText=server
-                } else serverText=if(state.connected) runningServer().let { (group,server) -> if(group.isEmpty()) server else "[$group] $server" } else ""
+                    if(minimalHome) { groupText="";serverText="" } else {
+                        val (group,server)=runningServer()
+                        groupText=group;serverText=server
+                    }
+                } else serverText=if(!minimalHome && state.connected) runningServer().let { (group,server) -> if(group.isEmpty()) server else "[$group] $server" } else ""
             }
         }
     }

@@ -1,0 +1,1391 @@
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt
+new file mode 100644
+index 0000000..59638d7
+--- /dev/null
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/CourtyardOrbArtwork.kt
+@@ -0,0 +1,313 @@
++package app.rawline.mobile.ui
++
++import android.animation.ValueAnimator
++import android.content.Context
++import android.graphics.*
++import android.os.Build
++import android.os.SystemClock
++import android.view.View
++import androidx.core.graphics.ColorUtils
++import kotlin.math.*
++import kotlin.random.Random
++
++/** Native interpretation of rawline_html5_canvas.html; HTML controls and simulated VPN are not embedded. */
++class CourtyardOrbArtwork(context: Context, private val idleText: String) : MobileOrbArtwork(context, idleText) {
++    private val density = context.resources.displayMetrics.density
++    private val p = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
++    private val path = Path()
++    private val clip = Path().apply { addCircle(0f, 0f, 102f, Path.Direction.CW) }
++    private val rect = RectF()
++    private val glyph = Path().apply {
++        addArc(RectF(-27f, -29f, 27f, 25f), -58f, 296f)
++        moveTo(0f, -35f); lineTo(0f, -5f)
++    }
++    private val random = Random(1337)
++    private val graffitiFont = Typeface.create("sans-serif-condensed",Typeface.BOLD)
++    private val arcPower = PowerButtonStyle.arcs
++    private val furnacePower = PowerButtonStyle.furnace
++    private val snowPower = PowerButtonStyle.snow
++    private val walls = arrayOf(
++        Wall(-54f, -34f, 58f, -24f, -20f, 54f, 6, 3, false, 7f),
++        Wall(21f, -18f, 52f, 48f, -31f, 55f, 5, 3, false, -6f),
++        Wall(-102f, -52f, 66f, -50f, -26f, 58f, 6, 4, true, 11f),
++        Wall(46f, -25f, 55f, 102f, -54f, 64f, 6, 4, true, -12f)
++    )
++    private data class Wall(val x0: Float, val top0: Float, val bottom0: Float, val x1: Float,
++        val top1: Float, val bottom1: Float, val rows: Int, val cols: Int, val balconies: Boolean, val side: Float) {
++        fun x(u: Float) = x0 + (x1 - x0) * u
++        fun y(u: Float, v: Float): Float {
++            val top = top0 + (top1 - top0) * u
++            return top + (bottom0 + (bottom1 - bottom0) * u - top) * v
++        }
++    }
++    private data class Window(val wall: Wall, val row: Int, val col: Int, val threshold: Float,
++        val idle: Boolean, val tv: Boolean, val warmth: Float, val phase: Float)
++    private val windows = walls.flatMapIndexed { index, wall ->
++        (0 until wall.rows).flatMap { row -> (0 until wall.cols).map { col ->
++            Window(wall, row, col, if (random.nextFloat() < .14f) 9.9f else .05f + random.nextFloat() * .82f,
++                (index == 2 && row == 2 && col == 1) || (index == 3 && row == 3 && col == 2),
++                index == 0 && row == 1 && col == 1, random.nextFloat(), random.nextFloat() * 6.28f)
++        } }
++    }
++    // x1,y1,x2,y2,sag,phase,speed: the same converging courtyard wires as the prototype.
++    private val wires = arrayOf(
++        floatArrayOf(-95f,-55f,-22f,-34f,14f,.2f,.9f), floatArrayOf(-88f,-50f,52f,-32f,22f,1.1f,1.1f),
++        floatArrayOf(-62f,-36f,85f,-48f,26f,2.3f,.8f), floatArrayOf(25f,-22f,96f,-52f,13f,3.4f,1.2f),
++        floatArrayOf(-92f,-32f,-24f,-6f,16f,.7f,1.3f), floatArrayOf(-76f,-14f,-20f,12f,14f,1.9f,1f),
++        floatArrayOf(88f,-35f,24f,-6f,16f,2.8f,1.25f), floatArrayOf(78f,-12f,21f,14f,15f,3.9f,.95f),
++        floatArrayOf(-16f,22f,-55f,54f,8f,1.5f,1.4f), floatArrayOf(-6f,26f,-24f,52f,6f,2.2f,1.15f),
++        floatArrayOf(8f,26f,28f,49f,6f,.4f,1.35f), floatArrayOf(18f,21f,56f,46f,9f,3.1f,1.05f)
++    )
++    private val stacks = arrayOf(floatArrayOf(-30f,-58f,5.5f,9.5f), floatArrayOf(14f,-62f,6f,10.5f), floatArrayOf(31f,-47f,4.2f,7.5f))
++    private val flakes = Array(32) { floatArrayOf(random.nextFloat()*204-102,random.nextFloat()*204-102,
++        .7f+random.nextFloat()*1.4f,8+random.nextFloat()*12,14+random.nextFloat()*18,.25f+random.nextFloat()*.5f) }
++    private val puffs = Array(34) { i -> floatArrayOf((i%3).toFloat(),i/34f,.14f+random.nextFloat()*.08f,
++        10+random.nextFloat()*14,(random.nextFloat()-.5f)*10,(random.nextFloat()-.5f)*6) }
++    private var staticLayer: Bitmap? = null
++    private var sizeKey = 0
++    private var sky: Shader? = null
++    private var furnace: Shader? = null
++    private var smoke: Shader? = null
++    private var vignette: Shader? = null
++    private var aura: Shader? = null
++    private var lastTime = 0L
++    private var phase = 0f
++    private var progress = 0f
++    private var caption = ""
++    private var captionUpper = ""
++
++    override fun draw(canvas: Canvas) {
++        if (bounds.isEmpty) return
++        val disc = if (discSize > 0) discSize else min(bounds.width(),bounds.height())
++        val radius = MobileOrbArtwork.radius(disc)
++        cache(radius)
++        val now = SystemClock.uptimeMillis()
++        val dt = if (lastTime == 0L) .016f else ((now-lastTime)/1000f).coerceIn(0f,.05f)
++        lastTime = now
++        val moving = Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled()
++        val target = if (connected) 1f else if (connecting) .52f else 0f
++        progress = if (moving) progress + (target-progress)*(1-exp(-dt*4.5f)) else target
++        if (abs(progress-target)<.003f) progress=target
++        if (moving) phase += dt
++        val cx=bounds.exactCenterX(); val cy=bounds.top+MobileOrbArtwork.centerY(disc)
++        canvas.save(); canvas.translate(cx,cy); canvas.scale(radius/114f*pressScale,radius/114f*pressScale)
++        p.reset(); p.isAntiAlias=true; p.isFilterBitmap=true
++        if (progress>.01f) {
++            p.shader=aura; p.alpha=(progress*255).toInt(); canvas.drawCircle(0f,0f,161f,p)
++            p.shader=null; p.alpha=255
++            p.style=Paint.Style.STROKE; p.strokeWidth=1.1f
++            for (i in 0 until 3) {
++                val age=(phase*.38f+i/3f)%1f
++                p.color=Color.argb(((1-age)*progress*45).toInt(),56,189,248)
++                canvas.drawCircle(0f,0f,124+age*28,p)
++            }
++        }
++        canvas.save(); canvas.clipPath(clip)
++        p.style=Paint.Style.FILL; p.shader=sky; canvas.drawCircle(0f,0f,102f,p); p.shader=null
++        p.shader=furnace; p.alpha=((.08f+progress*.92f)*furnacePower*210).toInt().coerceIn(0,255)
++        canvas.drawCircle(4f,8f,88f,p); p.shader=null; p.alpha=255
++        drawPlant(canvas)
++        drawSmoke(canvas,false)
++        staticLayer?.let { rect.set(-102f,-102f,102f,102f); canvas.drawBitmap(it,null,rect,p) }
++        drawWindows(canvas)
++        drawParapet(canvas)
++        drawWires(canvas)
++        drawPower(canvas)
++        if (snowPower>.01f) {
++            p.style=Paint.Style.FILL
++            for (f in flakes) {
++                if (moving) { f[0]=wrap(f[0]+f[3]*dt*snowPower); f[1]=wrap(f[1]+f[4]*dt*snowPower) }
++                p.color=Color.argb((f[5]*min(1f,snowPower)*130).toInt(),203,213,225)
++                canvas.drawCircle(f[0],f[1],f[2],p)
++            }
++        }
++        p.style=Paint.Style.FILL; p.alpha=255; p.shader=vignette; canvas.drawCircle(0f,0f,102f,p); p.shader=null
++        canvas.restore()
++        drawRim(canvas)
++        drawSmoke(canvas,true)
++        if (progress>.03f && arcPower>.01f) drawLightning(canvas)
++        if (focused) { p.style=Paint.Style.STROKE;p.strokeWidth=1.5f;p.color=MobilePalette.text;canvas.drawCircle(0f,0f,135f,p) }
++        canvas.restore()
++        drawCaption(canvas,cx,cy,radius)
++        val host=callback as? View
++        if (moving && !MobileOrbArtwork.frozen && host!=null && host.isShown && host.hasWindowFocus()) host.postInvalidateOnAnimation()
++    }
++
++    private fun wrap(v: Float) = if (v>102) v-204 else v
++    private fun blend(a: Int,b: Int,t: Float)=ColorUtils.blendARGB(a,b,t.coerceIn(0f,1f))
++    private fun poly(canvas: Canvas,w: Wall,u0: Float,v0: Float,u1: Float,v1: Float) {
++        path.rewind();path.moveTo(w.x(u0),w.y(u0,v0));path.lineTo(w.x(u1),w.y(u1,v0))
++        path.lineTo(w.x(u1),w.y(u1,v1));path.lineTo(w.x(u0),w.y(u0,v1));path.close();canvas.drawPath(path,p)
++    }
++    private fun cache(radius: Float) {
++        val size=(radius*204/114).toInt().coerceIn(256,1024)
++        if (sizeKey==size) return
++        sizeKey=size
++        val bitmap=Bitmap.createBitmap(size,size,Bitmap.Config.ARGB_8888)
++        val c=Canvas(bitmap);c.translate(size/2f,size/2f);c.scale(size/204f,size/204f)
++        for (w in walls) {
++            val edge=if(w.side>0) 1f else 0f
++            p.style=Paint.Style.FILL;p.color=0xFF0D141F.toInt()
++            path.rewind();path.moveTo(w.x(edge),w.y(edge,0f));path.lineTo(w.x(edge)+w.side,w.y(edge,0f)+4)
++            path.lineTo(w.x(edge)+w.side,w.y(edge,1f));path.lineTo(w.x(edge),w.y(edge,1f));path.close();c.drawPath(path,p)
++            p.shader=LinearGradient(w.x0,w.top0,w.x1,w.bottom1,0xFF25303D.toInt(),0xFF121A26.toInt(),Shader.TileMode.CLAMP)
++            poly(c,w,0f,0f,1f,1f);p.shader=null
++            p.style=Paint.Style.STROKE;p.strokeWidth=.9f;p.color=0xB006090E.toInt()
++            for (row in 1 until w.rows) {val v=row.toFloat()/w.rows;c.drawLine(w.x(0f),w.y(0f,v),w.x(1f),w.y(1f,v),p)}
++            for (col in 1 until w.cols) {val u=col.toFloat()/w.cols;c.drawLine(w.x(u),w.y(u,0f),w.x(u),w.y(u,1f),p)}
++            p.strokeWidth=1.6f;p.color=0xFF05070B.toInt();poly(c,w,0f,0f,1f,1f)
++            if (w.balconies) {
++                val x=w.x(.55f);val y=w.y(.55f,0f)
++                p.strokeWidth=1.2f;c.drawLine(x,y,x,y-12,p);c.drawLine(x-5,y-9,x+5,y-7,p)
++                for(row in 1 until w.rows) { val v=row.toFloat()/w.rows;poly(c,w,.08f,v,.36f,(v+.025f).coerceAtMost(1f)) }
++            }
++        }
++        val noise=Random(901);p.style=Paint.Style.FILL
++        for(i in 0 until 1700) {p.color=if(i%2==0) 0x103E4C61 else 0x18000000;c.drawCircle(noise.nextFloat()*204-102,noise.nextFloat()*204-102,.35f,p)}
++        staticLayer=bitmap
++        sky=LinearGradient(0f,-102f,0f,102f,intArrayOf(0xFF0A0E16.toInt(),0xFF182436.toInt(),0xFF0D121A.toInt()),null,Shader.TileMode.CLAMP)
++        furnace=RadialGradient(4f,8f,88f,intArrayOf(0xDAFFC85A.toInt(),0xA6FF7319.toInt(),0x40D2370A,Color.TRANSPARENT),floatArrayOf(0f,.32f,.68f,1f),Shader.TileMode.CLAMP)
++        smoke=RadialGradient(0f,0f,1f,intArrayOf(0xDD536070.toInt(),0x88404B5A.toInt(),Color.TRANSPARENT),floatArrayOf(0f,.5f,1f),Shader.TileMode.CLAMP)
++        vignette=RadialGradient(0f,0f,102f,intArrayOf(Color.TRANSPARENT,Color.TRANSPARENT,0xAA04070C.toInt()),floatArrayOf(0f,.68f,1f),Shader.TileMode.CLAMP)
++        aura=RadialGradient(0f,0f,161f,intArrayOf(Color.TRANSPARENT,0x2638BDF8,Color.TRANSPARENT),floatArrayOf(0f,.70f,1f),Shader.TileMode.CLAMP)
++    }
++
++    private fun drawPlant(c: Canvas) {
++        p.style=Paint.Style.FILL;p.color=0xFF0E131B.toInt()
++        c.drawRect(-42f,4f,38f,28f,p);c.drawRect(-15f,-2f,38f,28f,p)
++        for ((index,ch) in stacks.withIndex()) {
++            val x=ch[0];val y=ch[1];val tw=ch[2];val bw=ch[3]
++            path.rewind();path.moveTo(x-tw,y);path.lineTo(x+tw,y);path.lineTo(x+bw,18f);path.lineTo(x-bw,18f);path.close()
++            p.color=blend(0xFF26303D.toInt(),0xFF6E4940.toInt(),progress*.6f);c.drawPath(path,p)
++            c.save();c.clipPath(path)
++            for (band in 0..2) {p.color=if(band%2==0) 0xBB993730.toInt() else 0x887D8B9A.toInt();c.drawRect(x-bw-2,y+5+band*9,x+bw+2,y+9.5f+band*9,p)}
++            c.restore();p.style=Paint.Style.STROKE;p.strokeWidth=1.3f;p.color=0xFF06080D.toInt();c.drawPath(path,p);p.style=Paint.Style.FILL
++            val blink=.25f+(.5f+.5f*sin(phase*3.2f+index*1.9f))*.75f
++            p.color=Color.argb((blink*55).toInt(),255,60,40);c.drawCircle(x,y+1,4.5f,p)
++            p.color=Color.argb((blink*220).toInt(),255,110,90);c.drawCircle(x,y+1,1.4f,p)
++        }
++    }
++    private fun drawWindows(c: Canvas) {
++        for(w in windows) {
++            val tv=w.tv && progress<.3f
++            val amount=when {progress>w.threshold -> ((progress-w.threshold)/.16f).coerceIn(0f,1f)
++                w.idle -> .28f+.05f*sin(phase*2+w.phase)
++                tv -> .35f+.2f*sin(phase*7+w.phase)
++                else -> 0f}
++            val wall=w.wall;val u0=(w.col+.22f)/wall.cols;val u1=(w.col+.78f)/wall.cols
++            val v0=(w.row+.20f)/wall.rows;val v1=(w.row+.76f)/wall.rows
++            p.style=Paint.Style.FILL
++            p.color=if(amount>.02f) {if(tv) Color.argb((amount*180).toInt(),56,189,248)
++                else Color.argb((64+amount*191).toInt(),255,(145+w.warmth*70).toInt(),(45+w.warmth*70).toInt())} else 0xFF0C1119.toInt()
++            poly(c,wall,u0,v0,u1,v1)
++            p.style=Paint.Style.STROKE;p.color=0xFF06080D.toInt();p.strokeWidth=.9f;poly(c,wall,u0,v0,u1,v1)
++            val u=(u0+u1)*.5f;c.drawLine(wall.x(u),wall.y(u,v0),wall.x(u),wall.y(u,v1),p)
++        }
++    }
++    private fun drawParapet(c: Canvas) {
++        c.save();c.translate(0f,62f);c.rotate(-6.3f)
++        p.style=Paint.Style.FILL;p.color=0xFF182331.toInt();c.drawRect(-120f,-16f,120f,52f,p)
++        p.color=blend(0xFF2E3846.toInt(),0xFF3D4F63.toInt(),progress);c.drawRect(-120f,-19f,120f,-14.5f,p)
++        p.style=Paint.Style.STROKE;p.strokeWidth=1.4f;p.color=0xFF06090F.toInt();c.drawLine(-120f,22f,120f,22f,p)
++        for(i in 0..8) {val x=-64f+i*16;p.color=blend(0x88505F72.toInt(),0xCC22D3EE.toInt(),progress);c.drawLine(x,4f,x,12f+(i*7%13),p)}
++        p.typeface=graffitiFont;p.textAlign=Paint.Align.CENTER;p.textSize=18.5f
++        p.style=Paint.Style.STROKE;p.strokeWidth=2.6f;p.color=0xFF070A10.toInt();c.drawText("МОИ БРАТИКИ",0f,6f,p)
++        p.style=Paint.Style.FILL;p.color=blend(0xFF4A5666.toInt(),0xFFA5F3FC.toInt(),progress);c.drawText("МОИ БРАТИКИ",0f,6f,p)
++        c.restore()
++    }
++    private fun drawWires(c: Canvas) {
++        p.style=Paint.Style.STROKE;p.strokeCap=Paint.Cap.ROUND
++        for(w in wires) {
++            val mx=(w[0]+w[2])*.5f;val my=max(w[1],w[3])+w[4]+sin(phase*1.9f+w[5])*2.4f
++            path.rewind();path.moveTo(w[0],w[1]);path.quadTo(mx,my,w[2],w[3])
++            p.color=0xFF05080D.toInt();p.strokeWidth=2.1f;c.drawPath(path,p)
++            p.color=blend(0xFF1C2430.toInt(),0xFF2B3E52.toInt(),progress);p.strokeWidth=.9f;c.drawPath(path,p)
++            if(progress>.05f) {
++                val t=(phase*.45f*w[6]+w[5]*.3f)%1;val inv=1-t
++                val x=inv*inv*w[0]+2*inv*t*mx+t*t*w[2];val y=inv*inv*w[1]+2*inv*t*my+t*t*w[3]
++                p.style=Paint.Style.FILL;p.color=Color.argb((progress*110).toInt(),56,189,248);c.drawCircle(x,y,3.8f,p)
++                p.color=Color.argb((progress*255).toInt(),224,242,254);c.drawCircle(x,y,1.2f,p);p.style=Paint.Style.STROKE
++            }
++        }
++    }
++    private fun drawPower(c: Canvas) {
++        p.style=Paint.Style.STROKE;p.strokeCap=Paint.Cap.ROUND;p.strokeJoin=Paint.Join.ROUND
++        p.strokeWidth=8.5f;p.color=0xFF070A10.toInt();c.drawPath(glyph,p)
++        p.strokeWidth=4.5f;p.color=0xFF293240.toInt();c.drawPath(glyph,p)
++        if(progress>.02f) {
++            for(i in 3 downTo 1) {p.strokeWidth=5f+i*3;p.color=Color.argb((progress*18).toInt(),6,182,212);c.drawPath(glyph,p)}
++            p.strokeWidth=5.2f;p.color=Color.argb((progress*255).toInt(),224,242,254);c.drawPath(glyph,p)
++        }
++    }
++    private fun drawSmoke(c: Canvas,outside: Boolean) {
++        p.style=Paint.Style.FILL
++        for(f in puffs) {
++            val age=(f[1]+phase*f[2]*(.65f+progress*.85f))%1
++            if(outside && age<.32f || !outside && age>=.55f) continue
++            val ch=stacks[f[0].toInt()];val x=ch[0]+age*76+sin(phase*1.4f+age*5)*4+f[4]*age
++            val y=ch[1]-age*68+f[5]*age;val radius=(6+age*f[3])*(.75f+progress*.35f)
++            val visibility=if(outside) progress.pow(1.2f) else .28f+progress*.72f
++            c.save();c.translate(x,y);c.scale(radius,radius)
++            p.shader=smoke;p.alpha=(sin(age*PI.toFloat())*visibility*145).toInt().coerceIn(0,255)
++            c.drawCircle(0f,0f,1f,p);p.shader=null;p.alpha=255
++            if(progress*furnacePower>.35f && age<.55f) {p.color=Color.argb(((1-age)*progress*90).toInt(),255,140,45);c.drawCircle(0f,.3f,.40f,p)}
++            c.restore()
++        }
++    }
++    private fun drawRim(c: Canvas) {
++        // Alternating front/back cable loops cross the casting as in the HTML design.
++        for(front in 0..1) {
++            for(i in 0 until 18) {
++                if(i%2!=front) continue
++                val a=i*2*PI.toFloat()/18-.22f;val b=a+.65f+(i%3)*.07f;val m=(a+b)*.5f
++                path.rewind();path.moveTo(cos(a)*109,sin(a)*109);path.quadTo(cos(m)*136,sin(m)*136,cos(b)*109,sin(b)*109)
++                p.style=Paint.Style.STROKE;p.strokeCap=Paint.Cap.ROUND;p.strokeWidth=7f;p.color=0xFF05070B.toInt();c.drawPath(path,p)
++                p.strokeWidth=4.5f;p.color=blend(0xFF1D2631.toInt(),0xFF2E4760.toInt(),progress*.5f);c.drawPath(path,p)
++                p.strokeWidth=.8f;p.color=0x50637589;c.drawPath(path,p)
++            }
++            if(front==0) {
++                p.strokeWidth=20f;p.color=blend(0xFF283342.toInt(),0xFF456681.toInt(),progress*.7f);c.drawCircle(0f,0f,112f,p)
++                p.strokeWidth=2f;p.color=0xFF05070C.toInt();c.drawCircle(0f,0f,102f,p);c.drawCircle(0f,0f,122f,p)
++                for(i in 0 until 12) {
++                    val a=i*PI.toFloat()/6-PI.toFloat()/2;val x=cos(a)*113;val y=sin(a)*113
++                    p.style=Paint.Style.FILL;p.color=0xFF070A0F.toInt();c.drawCircle(x+.8f,y+1,3.3f,p)
++                    p.color=blend(0xFF3F4C5C.toInt(),0xFF7DD3FC.toInt(),progress*.65f);c.drawCircle(x,y,2.7f,p)
++                }
++            }
++        }
++    }
++    private fun drawLightning(c: Canvas) {
++        val power=((progress*arcPower).coerceAtMost(1.6f))
++        val tick=(phase*16).toInt()
++        p.style=Paint.Style.STROKE;p.strokeJoin=Paint.Join.ROUND
++        for(i in 0 until 7) {
++            val start=i*2*PI.toFloat()/7+phase*.35f*(if(i%2==0)1 else -1)
++            path.rewind()
++            for(j in 0..12) {
++                val u=j/12f;val a=start+u*.78f
++                val radius=117+sin(j*19.17f+tick*7.31f+i)*9*sin(u*PI.toFloat())
++                val x=cos(a)*radius;val y=sin(a)*radius
++                if(j==0)path.moveTo(x,y) else path.lineTo(x,y)
++                if(j==6) {path.lineTo(x+cos(a+.6f)*11,y+sin(a+.6f)*11);path.moveTo(x,y)}
++            }
++            p.strokeWidth=6f;p.color=Color.argb((power*22).toInt().coerceAtMost(255),14,165,233);c.drawPath(path,p)
++            p.strokeWidth=1.6f;p.color=Color.argb((power*225).toInt().coerceAtMost(255),186,230,253);c.drawPath(path,p)
++        }
++    }
++    private fun drawCaption(c: Canvas,cx: Float,cy: Float,radius: Float) {
++        p.reset();p.isAntiAlias=true;p.textAlign=Paint.Align.CENTER
++        val current=statusText.ifEmpty {idleText}
++        if(current!=caption) {caption=current;captionUpper=current.uppercase(java.util.Locale.ROOT)}
++        p.typeface=if(connected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
++        p.textSize=(if(connected)18 else 14)*density
++        val label=if(connected)captionUpper else caption
++        val width=bounds.width()*.94f;val measured=p.measureText(label)
++        if(measured>width)p.textSize*=width/measured
++        p.color=if(connected)0xFF4ADE80.toInt() else MobilePalette.muted
++        val top=cy+radius+27*density;c.drawText(label,cx,top,p)
++        if(connected) {
++            p.textSize=12*density;p.color=0xFF38BDF8.toInt();c.drawText("Братики онлайн!",cx,top+19*density,p)
++            p.textSize=14*density;p.color=MobilePalette.text;c.drawText(elapsedText,cx,top+39*density,p)
++        }
++    }
++}
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt
+new file mode 100644
+index 0000000..48cf0bd
+--- /dev/null
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/IndustrialOrbArtwork.kt
+@@ -0,0 +1,434 @@
++package app.rawline.mobile.ui
++
++import android.animation.ValueAnimator
++import android.content.Context
++import android.graphics.Bitmap
++import android.graphics.Canvas
++import android.graphics.Color
++import android.graphics.LinearGradient
++import android.graphics.Paint
++import android.graphics.Path
++import android.graphics.RadialGradient
++import android.graphics.RectF
++import android.graphics.Shader
++import android.graphics.Typeface
++import android.os.Build
++import android.os.SystemClock
++import android.view.View
++import androidx.core.graphics.ColorUtils
++import kotlin.math.PI
++import kotlin.math.abs
++import kotlin.math.cos
++import kotlin.math.exp
++import kotlin.math.min
++import kotlin.math.sin
++import kotlin.random.Random
++
++/** Weathered steel and braided cables are rasterised once; only the light, arcs and smoke animate. */
++class IndustrialOrbArtwork(context: Context, private val idleText: String) : MobileOrbArtwork(context, idleText) {
++    private val density = context.resources.displayMetrics.density
++    private val paint = Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG)
++    private val rect = RectF()
++    private val path = Path()
++    private var offLayer: Bitmap? = null
++    private var onLayer: Bitmap? = null
++    private var cachedSize = 0
++    private var haze: Shader? = null
++    private var smoke: Shader? = null
++    private var lastFrame = 0L
++    private var light = 0f
++    private var caption = ""
++    private var upperCaption = ""
++    private val cyan = Color.rgb(53, 224, 255)
++    private val whiteHot = Color.rgb(215, 253, 255)
++    private val deepSteel = Color.rgb(29, 33, 37)
++    private val hull = Path()
++    private val glyph = Path().apply {
++        addArc(RectF(-.24f, -.24f, .24f, .24f), -54f, 288f)
++        moveTo(0f, -.32f); lineTo(0f, -.045f)
++    }
++    private val motionAllowed get() = Build.VERSION.SDK_INT < 26 || ValueAnimator.areAnimatorsEnabled()
++
++    override fun draw(canvas: Canvas) {
++        if (bounds.isEmpty) return
++        val disc = if (discSize > 0) discSize else min(bounds.width(), bounds.height())
++        val radius = MobileOrbArtwork.radius(disc)
++        ensureLayers(radius)
++        val now = SystemClock.uptimeMillis()
++        val elapsed = if (lastFrame == 0L) 16f else (now - lastFrame).coerceIn(1, 64).toFloat()
++        lastFrame = now
++        val target = if (connected) 1f else if (connecting) .55f else 0f
++        val moving = motionAllowed
++        light = if (moving) light + (target - light) * (1f - exp(-elapsed / 280f)) else target
++        if (abs(light - target) < .003f) light = target
++        val active = connected || connecting || light != target
++        val phase = if (moving) (now % 120000L) / 1000f else 0f
++        val cx = bounds.exactCenterX()
++        val cy = bounds.top + MobileOrbArtwork.centerY(disc)
++
++        canvas.save()
++        canvas.translate(cx, cy)
++        canvas.scale(radius * pressScale, radius * pressScale)
++        paint.reset(); paint.isAntiAlias = true; paint.isFilterBitmap = true
++        if (light > .01f) {
++            paint.shader = haze
++            paint.alpha = (light * (if (moving) .86f + .14f * sin(phase * 2.3f) else 1f) * 255).toInt()
++            canvas.drawCircle(0f, 0f, 1.42f, paint)
++            paint.shader = null; paint.alpha = 255
++        }
++        rect.set(-1.42f, -1.42f, 1.42f, 1.42f)
++        offLayer?.let { canvas.drawBitmap(it, null, rect, paint) }
++        if (light > .01f) {
++            paint.alpha = (255 * light).toInt()
++            onLayer?.let { canvas.drawBitmap(it, null, rect, paint) }
++            paint.alpha = 255
++            drawSmoke(canvas, phase)
++            drawElectricity(canvas, phase)
++        }
++        if (focused) {
++            paint.shader = null; paint.style = Paint.Style.STROKE
++            paint.strokeWidth = .012f; paint.color = MobilePalette.text
++            canvas.drawCircle(0f, 0f, 1.30f, paint)
++        }
++        canvas.restore()
++        drawCaption(canvas, cx, cy, radius)
++        val host = callback as? View
++        if (active && moving && !MobileOrbArtwork.frozen && host != null && host.isShown && host.hasWindowFocus()) {
++            host.postInvalidateOnAnimation()
++        }
++    }
++
++    private fun ensureLayers(radius: Float) {
++        val size = (radius * 2.84f).toInt().coerceIn(256, 1280)
++        if (size == cachedSize) return
++        cachedSize = size
++        // Let the renderer release old bitmaps after any in-flight display list has finished with them.
++        offLayer = renderHardware(size, false)
++        onLayer = renderHardware(size, true)
++        haze = RadialGradient(0f, 0f, 1.42f,
++            intArrayOf(Color.TRANSPARENT, 0x0035E0FF, 0x4435DFFF, Color.TRANSPARENT),
++            floatArrayOf(0f, .50f, .75f, 1f), Shader.TileMode.CLAMP)
++        smoke = RadialGradient(0f, 0f, 1f,
++            intArrayOf(0x777F8995, 0x4B536170, Color.TRANSPARENT),
++            floatArrayOf(0f, .35f, 1f), Shader.TileMode.CLAMP)
++    }
++
++    private fun renderHardware(size: Int, powered: Boolean): Bitmap {
++        val bitmap = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
++        val canvas = Canvas(bitmap)
++        canvas.translate(size / 2f, size / 2f)
++        canvas.scale(size / 2.84f, size / 2.84f)
++        paint.reset(); paint.isAntiAlias = true
++        val random = Random(87341)
++        drawCables(canvas)
++        // Segmented, slightly irregular cast housing rather than a thin flat ring.
++        hull.rewind()
++        for (i in 0..180) {
++            val angle = i * (2f * PI.toFloat() / 180)
++            val r = 1.02f + .016f * sin(angle * 9f) + .009f * cos(angle * 17f)
++            val x = cos(angle) * r; val y = sin(angle) * r
++            if (i == 0) hull.moveTo(x, y) else hull.lineTo(x, y)
++        }
++        hull.close()
++        paint.style = Paint.Style.FILL; paint.color = Color.BLACK
++        canvas.save(); canvas.translate(.016f, .036f); canvas.drawPath(hull, paint); canvas.restore()
++        paint.shader = LinearGradient(-.8f, -.9f, .7f, 1f,
++            intArrayOf(0xFF11161A.toInt(), 0xFF78818A.toInt(), 0xFF383C3F.toInt(), 0xFF1C1C1B.toInt(), 0xFF636B70.toInt()),
++            floatArrayOf(0f, .22f, .45f, .70f, 1f), Shader.TileMode.CLAMP)
++        canvas.drawPath(hull, paint)
++        paint.shader = null
++        // Cast-metal texture and corrosion stay deterministic between off/on layers.
++        canvas.save(); canvas.clipPath(hull)
++        for (i in 0 until 3600) {
++            val x = random.nextFloat() * 2.1f - 1.05f
++            val y = random.nextFloat() * 2.1f - 1.05f
++            paint.color = if (i % 7 == 0) Color.argb(48, 130, 80, 43)
++                else if (i % 2 == 0) Color.argb(36, 220, 227, 230) else Color.argb(60, 0, 0, 0)
++            canvas.drawCircle(x, y, .0015f + random.nextFloat() * .005f, paint)
++        }
++        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
++        for (i in 0 until 230) {
++            val a = random.nextFloat() * 2f * PI.toFloat()
++            val radius = .86f + random.nextFloat() * .14f
++            val x = cos(a) * radius; val y = sin(a) * radius
++            paint.color = if (i % 3 == 0) 0x705E4030 else 0x60495056
++            paint.strokeWidth = .0015f
++            canvas.drawLine(x, y, x + .015f + random.nextFloat() * .045f, y - .005f, paint)
++        }
++        canvas.restore()
++        // Three bevels catch opposing highlights, and a deep black gasket separates the cavity.
++        rim(canvas, .996f, .014f, 0xFF8D9598.toInt(), 0xFF171A1D.toInt())
++        rim(canvas, .89f, .035f, 0xFF14181D.toInt(), 0xFF7B858A.toInt())
++        rim(canvas, .856f, .024f, Color.BLACK, 0xFF242C33.toInt())
++        paint.style = Paint.Style.FILL
++        paint.shader = RadialGradient(-.26f, -.3f, 1.5f,
++            intArrayOf(0xFF242B2F.toInt(), 0xFF10171E.toInt(), 0xFF04080C.toInt()), null, Shader.TileMode.CLAMP)
++        canvas.drawCircle(0f, 0f, .841f, paint); paint.shader = null
++        if (powered) drawFactory(canvas) else drawClosedHatch(canvas, random)
++        // Machined sockets: recessed hex bolts, glint, screwdriver slots and rust halos.
++        for (i in 0 until 10) {
++            val a = i * (2f * PI.toFloat() / 10f) + .13f
++            canvas.save(); canvas.translate(cos(a) * .947f, sin(a) * .947f)
++            paint.style = Paint.Style.FILL; paint.color = 0xA0442D1D.toInt()
++            canvas.drawCircle(0f, .006f, .039f, paint)
++            paint.color = 0xFF070A0D.toInt(); canvas.drawCircle(0f, 0f, .029f, paint)
++            path.rewind()
++            for (side in 0..6) {
++                val b = side * PI.toFloat() / 3f
++                val x = cos(b) * .023f; val y = sin(b) * .023f
++                if (side == 0) path.moveTo(x, y) else path.lineTo(x, y)
++            }
++            paint.shader = LinearGradient(-.02f, -.02f, .02f, .02f, 0xFF9AA3A6.toInt(), 0xFF252B30.toInt(), Shader.TileMode.CLAMP)
++            canvas.drawPath(path, paint); paint.shader = null
++            paint.color = 0xFF12171A.toInt()
++            rect.set(-.012f, -.0025f, .012f, .0025f)
++            canvas.save(); canvas.rotate(i * 27f); canvas.drawRect(rect, paint); canvas.restore()
++            canvas.restore()
++        }
++        drawBrackets(canvas)
++        if (powered) {
++            // Thin neon ring and soft rim bloom, baked into a transparent layer with no rectangular edges.
++            paint.style = Paint.Style.STROKE
++            for (i in 12 downTo 1) {
++                paint.strokeWidth = .003f + i * .006f
++                paint.color = ColorUtils.setAlphaComponent(cyan, 3 + (12 - i) / 2)
++                canvas.drawCircle(0f, 0f, .838f, paint)
++            }
++            paint.strokeWidth = .009f; paint.color = cyan; canvas.drawCircle(0f, 0f, .838f, paint)
++            paint.strokeWidth = .002f; paint.color = whiteHot; canvas.drawCircle(0f, 0f, .832f, paint)
++        }
++        // The power symbol is engraved steel when off, a glowing tube when on; the scene remains visible behind it.
++        canvas.save(); canvas.translate(0f, -.045f)
++        paint.strokeCap = Paint.Cap.ROUND; paint.strokeJoin = Paint.Join.ROUND; paint.style = Paint.Style.STROKE
++        paint.strokeWidth = .064f; paint.color = 0xC0000000.toInt()
++        canvas.save(); canvas.translate(.006f, .015f); canvas.drawPath(glyph, paint); canvas.restore()
++        if (powered) {
++            for (i in 8 downTo 1) {
++                paint.strokeWidth = .039f + i * .014f
++                paint.color = ColorUtils.setAlphaComponent(cyan, 5)
++                canvas.drawPath(glyph, paint)
++            }
++            paint.strokeWidth = .035f; paint.color = cyan; canvas.drawPath(glyph, paint)
++            paint.strokeWidth = .009f; paint.color = whiteHot; canvas.drawPath(glyph, paint)
++        } else {
++            paint.shader = LinearGradient(-.24f, -.32f, .2f, .24f,
++                intArrayOf(0xFF424A4F.toInt(), 0xFF9DA7AC.toInt(), 0xFF555F67.toInt()), null, Shader.TileMode.CLAMP)
++            paint.strokeWidth = .040f; canvas.drawPath(glyph, paint); paint.shader = null
++            paint.strokeWidth = .006f; paint.color = 0x507E8D97; canvas.drawPath(glyph, paint)
++        }
++        canvas.restore()
++        return bitmap
++    }
++
++    private fun drawCables(canvas: Canvas) {
++        val random = Random(431)
++        // Overlapping thick rubber sheaths with sinusoidal corrugations, not concentric line art.
++        for (cable in 0 until 5) {
++            val radius = 1.055f + cable * .037f
++            path.rewind()
++            for (step in 0..190) {
++                val a = -.25f + step * .032f
++                val rr = radius + .017f * sin(a * 3f + cable * 2f) + .008f * cos(a * 7f)
++                val x = cos(a) * rr; val y = sin(a) * rr * (.97f + cable * .004f)
++                if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
++            }
++            paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND
++            paint.strokeWidth = .043f; paint.color = 0xEE020509.toInt(); canvas.drawPath(path, paint)
++            paint.strokeWidth = .029f; paint.color = 0xFF252C32.toInt(); canvas.drawPath(path, paint)
++            paint.strokeWidth = .012f; paint.color = 0xFF3D454B.toInt()
++            canvas.save(); canvas.translate(-.004f, -.006f); canvas.drawPath(path, paint); canvas.restore()
++            for (step in 0 until 130) {
++                val a = step * .047f + cable * .023f
++                val rr = radius + .017f * sin(a * 3f + cable * 2f) + .008f * cos(a * 7f)
++                val x = cos(a) * rr; val y = sin(a) * rr * (.97f + cable * .004f)
++                val half = .015f + random.nextFloat() * .003f
++                paint.strokeWidth = .004f; paint.color = 0xC0080B0E.toInt()
++                canvas.drawLine(x - cos(a + .4f) * half, y - sin(a + .4f) * half,
++                    x + cos(a + .4f) * half, y + sin(a + .4f) * half, paint)
++            }
++        }
++    }
++
++    private fun rim(canvas: Canvas, radius: Float, width: Float, top: Int, bottom: Int) {
++        paint.style = Paint.Style.STROKE; paint.strokeWidth = width
++        paint.shader = LinearGradient(-.6f, -.8f, .6f, .8f, top, bottom, Shader.TileMode.CLAMP)
++        canvas.drawCircle(0f, 0f, radius, paint); paint.shader = null
++    }
++
++    private fun drawBrackets(canvas: Canvas) {
++        // Four clamp plates physically tie the casting to the cable harness.
++        for (i in 0 until 4) {
++            canvas.save(); canvas.rotate(34f + i * 90f)
++            rect.set(-.065f, -1.20f, .065f, -.99f)
++            paint.style = Paint.Style.FILL
++            paint.shader = LinearGradient(-.065f, 0f, .065f, 0f,
++                intArrayOf(0xFF171D22.toInt(), 0xFF616A71.toInt(), 0xFF252D33.toInt()), null, Shader.TileMode.CLAMP)
++            canvas.drawRoundRect(rect, .018f, .018f, paint); paint.shader = null
++            paint.color = 0xFF080C10.toInt(); canvas.drawCircle(0f, -1.05f, .020f, paint)
++            paint.color = 0xFF899297.toInt(); canvas.drawCircle(-.003f, -1.053f, .010f, paint)
++            canvas.restore()
++        }
++    }
++
++    private fun drawClosedHatch(canvas: Canvas, random: Random) {
++        canvas.save()
++        path.rewind(); path.addCircle(0f, 0f, .83f, Path.Direction.CW); canvas.clipPath(path)
++        paint.style = Paint.Style.FILL
++        paint.shader = LinearGradient(-.7f, -.8f, .7f, .8f,
++            intArrayOf(0xFF374044.toInt(), 0xFF1C252C.toInt(), 0xFF10171B.toInt()), null, Shader.TileMode.CLAMP)
++        canvas.drawCircle(0f, 0f, .83f, paint); paint.shader = null
++        for (i in 0 until 2100) {
++            val x = random.nextFloat() * 1.7f - .85f; val y = random.nextFloat() * 1.7f - .85f
++            paint.color = if (i % 3 == 0) 0x204F5E66 else 0x30000000
++            canvas.drawCircle(x, y, random.nextFloat() * .004f + .001f, paint)
++        }
++        // Horizontal hatch seam, reinforcement rails and chipped edges.
++        paint.style = Paint.Style.STROKE; paint.strokeWidth = .009f; paint.color = 0xFF080D12.toInt()
++        canvas.drawLine(-.84f, .12f, .84f, .12f, paint)
++        paint.strokeWidth = .003f; paint.color = 0x605A646B
++        canvas.drawLine(-.84f, .13f, .84f, .13f, paint)
++        for (i in 0..1) {
++            val y = -.43f + i * .86f
++            paint.strokeWidth = .036f; paint.color = 0xFF0F161C.toInt(); canvas.drawLine(-.85f, y, .85f, y, paint)
++            paint.strokeWidth = .008f; paint.color = 0x80525D64.toInt(); canvas.drawLine(-.85f, y - .014f, .85f, y - .014f, paint)
++        }
++        for (i in 0 until 70) {
++            val x = random.nextFloat() * 1.6f - .8f; val y = random.nextFloat() * 1.5f - .75f
++            paint.strokeWidth = .0016f; paint.color = 0x385F707A
++            canvas.drawLine(x, y, x + .015f + random.nextFloat() * .09f, y - .005f, paint)
++        }
++        canvas.restore()
++    }
++
++    private fun drawFactory(canvas: Canvas) {
++        canvas.save()
++        path.rewind(); path.addCircle(0f, 0f, .827f, Path.Direction.CW); canvas.clipPath(path)
++        paint.style = Paint.Style.FILL
++        paint.shader = RadialGradient(.16f, .18f, 1f,
++            intArrayOf(0xFF57432C.toInt(), 0xFF182D39.toInt(), 0xFF050B13.toInt()), null, Shader.TileMode.CLAMP)
++        canvas.drawCircle(0f, 0f, .84f, paint); paint.shader = null
++        // Distant stacks: different heights and capped brick bands.
++        val chimneys = floatArrayOf(-.48f, -.64f, .075f, -.14f, -.50f, .052f, .38f, -.69f, .087f, .58f, -.44f, .058f)
++        for (i in chimneys.indices step 3) {
++            val x = chimneys[i]; val y = chimneys[i + 1]; val w = chimneys[i + 2]
++            paint.shader = LinearGradient(x, 0f, x + w, 0f,
++                intArrayOf(0xFF19222A.toInt(), 0xFF59616A.toInt(), 0xFF1D252B.toInt()), null, Shader.TileMode.CLAMP)
++            canvas.drawRect(x, y, x + w, .35f, paint); paint.shader = null
++            paint.color = 0xFF1B2026.toInt(); canvas.drawRect(x - .009f, y, x + w + .009f, y + .025f, paint)
++            paint.strokeWidth = .002f; paint.style = Paint.Style.STROKE; paint.color = 0x654B3E36
++            for (j in 0 until 12) canvas.drawLine(x, y + j * .045f, x + w, y + j * .045f, paint)
++            paint.style = Paint.Style.FILL
++        }
++        // Pitched roofs and corrugated sheds; the factory spans the aperture rather than a small grid of dots.
++        val buildings = floatArrayOf(-.78f, -.08f, .33f, -.43f, -.23f, .29f, -.12f, -.04f, .36f, .26f, -.14f, .30f, .57f, .04f, .25f)
++        for (i in buildings.indices step 3) {
++            val x = buildings[i]; val y = buildings[i + 1]; val width = buildings[i + 2]
++            paint.shader = LinearGradient(x, y, x + width, .6f,
++                intArrayOf(0xFF5D5445.toInt(), 0xFF333B40.toInt(), 0xFF1A252D.toInt()), null, Shader.TileMode.CLAMP)
++            canvas.drawRect(x, y, x + width, .58f, paint); paint.shader = null
++            paint.color = 0xFF111A22.toInt()
++            path.rewind(); path.moveTo(x - .01f, y); path.lineTo(x + width * .52f, y - .09f)
++            path.lineTo(x + width + .01f, y); path.close(); canvas.drawPath(path, paint)
++            paint.style = Paint.Style.STROKE; paint.strokeWidth = .003f; paint.color = 0x605C656B
++            for (rib in 0 until 14) {
++                val bx = x + rib * width / 14f
++                canvas.drawLine(bx, y + .01f, bx, .58f, paint)
++            }
++            paint.style = Paint.Style.FILL
++            for (col in 0 until 4) for (row in 0 until 4) {
++                val wx = x + width * (.10f + col * .22f); val wy = y + .075f + row * .12f
++                paint.color = 0xFF080E16.toInt(); canvas.drawRect(wx - .008f, wy - .008f, wx + .043f, wy + .069f, paint)
++                val bright = (i + col * 7 + row * 3) % 6 != 0
++                paint.color = if (bright) 0xFFFFB957.toInt() else 0xFF725333.toInt()
++                canvas.drawRect(wx, wy, wx + .036f, wy + .057f, paint)
++                paint.color = 0x90421D08.toInt(); canvas.drawRect(wx + .015f, wy, wx + .019f, wy + .057f, paint)
++            }
++        }
++        // Pipes, a catwalk and foreground equipment frame the central symbol.
++        paint.style = Paint.Style.STROKE; paint.strokeWidth = .024f; paint.color = 0xFF101B24.toInt()
++        path.rewind(); path.moveTo(-.74f, .46f); path.lineTo(-.74f, -.34f); path.lineTo(-.35f, -.34f)
++        canvas.drawPath(path, paint)
++        paint.strokeWidth = .008f; paint.color = 0xFF758189.toInt(); canvas.drawPath(path, paint)
++        paint.strokeWidth = .011f; paint.color = 0xFF121B22.toInt()
++        for (i in 0 until 9) {
++            val x = -.8f + i * .20f
++            canvas.drawLine(x, .55f, x + .10f, .39f, paint)
++            canvas.drawLine(x + .10f, .39f, x + .20f, .55f, paint)
++        }
++        canvas.drawLine(-.85f, .40f, .85f, .40f, paint)
++        canvas.drawLine(-.85f, .55f, .85f, .55f, paint)
++        paint.style = Paint.Style.FILL
++        paint.shader = LinearGradient(0f, .43f, 0f, .85f, Color.TRANSPARENT, 0xFF03070B.toInt(), Shader.TileMode.CLAMP)
++        canvas.drawRect(-.85f, .43f, .85f, .85f, paint); paint.shader = null
++        canvas.restore()
++    }
++
++    private fun drawSmoke(canvas: Canvas, phase: Float) {
++        canvas.save()
++        path.rewind(); path.addCircle(0f, 0f, .827f, Path.Direction.CW); canvas.clipPath(path)
++        paint.style = Paint.Style.FILL; paint.shader = smoke
++        for (stack in 0 until 2) for (puff in 0 until 10) {
++            val age = (phase * .17f + puff * .1f + stack * .31f) % 1f
++            val x = (if (stack == 0) .42f else -.44f) - age * .30f + sin(age * 8f + stack) * .035f
++            val y = (if (stack == 0) -.67f else -.62f) - age * .40f
++            val radius = .045f + age * .15f
++            canvas.save(); canvas.translate(x, y); canvas.scale(radius * 1.5f, radius)
++            paint.alpha = ((1f - age) * 140 * light).toInt()
++            canvas.drawCircle(0f, 0f, 1f, paint); canvas.restore()
++        }
++        paint.shader = null; paint.alpha = 255
++        canvas.restore()
++    }
++
++    private fun drawElectricity(canvas: Canvas, phase: Float) {
++        paint.style = Paint.Style.STROKE; paint.strokeCap = Paint.Cap.ROUND; paint.strokeJoin = Paint.Join.ROUND
++        val flash = (phase * 11).toInt()
++        // Short-lived branching arcs follow the physical cable bundle instead of regular rotating polygons.
++        for (arc in 0 until 4) {
++            path.rewind()
++            val start = arc * 1.57f + flash * .19f
++            for (step in 0..18) {
++                val angle = start + step * .029f
++                val jitter = sin(step * 12.71f + flash * 3.17f + arc) * .027f
++                val radius = 1.10f + jitter + sin(step * 5.2f + flash) * .011f
++                val x = cos(angle) * radius; val y = sin(angle) * radius
++                if (step == 0) path.moveTo(x, y) else path.lineTo(x, y)
++                if (step == 9) {
++                    path.lineTo(x + cos(angle + .9f) * .12f, y + sin(angle + .9f) * .12f)
++                    path.moveTo(x, y)
++                }
++            }
++            for (stroke in 3 downTo 0) {
++                paint.strokeWidth = .003f + stroke * .012f
++                paint.color = ColorUtils.setAlphaComponent(if (stroke == 0) whiteHot else cyan,
++                    ((if (stroke == 0) 230 else 20) * light).toInt())
++                canvas.drawPath(path, paint)
++            }
++        }
++        if (connecting) {
++            rect.set(-.845f, -.845f, .845f, .845f)
++            paint.color = cyan; paint.strokeWidth = .014f
++            canvas.drawArc(rect, phase * 190f, 100f, false, paint)
++        }
++    }
++
++    private fun drawCaption(canvas: Canvas, cx: Float, cy: Float, radius: Float) {
++        paint.reset(); paint.isAntiAlias = true; paint.style = Paint.Style.FILL
++        paint.textAlign = Paint.Align.CENTER
++        val current = statusText.ifEmpty { idleText }
++        if (current != caption) { caption = current; upperCaption = current.uppercase(java.util.Locale.ROOT) }
++        val width = (if (textRoom > 0f) minOf(textRoom, bounds.width().toFloat()) else bounds.width().toFloat()) * .94f
++        val top = cy + radius + 27f * density
++        paint.typeface = if (connected) Typeface.DEFAULT_BOLD else Typeface.DEFAULT
++        paint.textSize = (if (connected) 18f else 14f) * density
++        val label = if (connected) upperCaption else caption
++        val measured = paint.measureText(label)
++        if (measured > width) paint.textSize *= width / measured
++        paint.color = if (connected) cyan else MobilePalette.muted
++        canvas.drawText(label, cx, top, paint)
++        if (connected && elapsedText.isNotEmpty()) {
++            paint.textSize = 20f * density; paint.color = MobilePalette.text
++            canvas.drawText(elapsedText, cx, top + 28f * density, paint)
++        }
++    }
++}
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
+index 917b462..7db497a 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileGlass.kt
+@@ -44,6 +44,18 @@ class MobileGlass(val radius: Float, private val tint: Int? = null) : Drawable()
+ 
+     override fun draw(canvas: Canvas) {
+         if (bounds.isEmpty) return
++        val custom = MobileThemes.current
++        if (custom != null) {
++            paint.style = Paint.Style.FILL
++            paint.shader = null
++            paint.color = tint?.let { androidx.core.graphics.ColorUtils.setAlphaComponent(it, 46) } ?: MobilePalette.surface
++            canvas.drawRoundRect(box, corner, corner, paint)
++            paint.style = Paint.Style.STROKE
++            paint.strokeWidth = density * .75f
++            paint.color = tint ?: MobilePalette.outline
++            canvas.drawRoundRect(box, corner, corner, paint)
++            return
++        }
+         if (MobileStyle.pastel && tint == null) {
+             paint.style = Paint.Style.FILL
+             paint.shader = null
+@@ -118,6 +130,13 @@ class MobileDockGlass(private val corner: Float, private val discY: Float, priva
+ 
+     override fun draw(canvas: Canvas) {
+         if (bounds.isEmpty) return
++        if (MobileThemes.current != null) {
++            paint.style = Paint.Style.FILL; paint.shader = null; paint.color = MobilePalette.surface
++            canvas.drawPath(shape, paint)
++            paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.color = MobilePalette.outline
++            canvas.drawPath(shape, paint)
++            return
++        }
+         paint.style = Paint.Style.FILL; paint.shader = body
+         canvas.drawPath(shape, paint)
+         paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.shader = rim
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
+index 48eaaf5..f3dcae4 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
+@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable
+ class MobileHomeBackdrop : Drawable() {
+     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+     override fun draw(canvas: Canvas) {
++        if (MobileThemes.current != null) { canvas.drawColor(MobilePalette.background); return }
+         if(MobileStyle.pastel) { drawPastel(canvas); return }
+         if(MobileStyle.new) {
+             // Soft light for the glass to lie on: true black or white stays the base.
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
+index 5836c5e..a9f496e 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
+@@ -74,6 +74,11 @@ class MobileHomeFragment : ToolbarFragment() {
+     private var content: LinearLayout? = null
+     private var power: TextView? = null
+     private var currentCheck: TextView? = null
++    /** Simplified home for this build: only the power button, servers and the subscription refresh. */
++    private val minimalHome = true
++    private var minimalStatusRow: View? = null
++    private var minimalChipActions: LinearLayout? = null
++    private var minimalBlock: View? = null
+     private var updatesTile: ImageButton? = null
+     private var homeTitle: TextView? = null
+     private var modeSwitches: Map<String,androidx.appcompat.widget.SwitchCompat> = emptyMap()
+@@ -377,6 +382,23 @@ class MobileHomeFragment : ToolbarFragment() {
+     private var observer: InvalidationTracker.Observer? = null
+     private var openSwipe: MobileSwipeTile? = null
+     private fun dp(n: Int) = (n * resources.displayMetrics.density).toInt()
++    /** The pinned block shows at most five servers; more scroll inside it. */
++    private fun sizeMinimalServerList() {
++        val scroll = serverScrollView ?: return
++        val row = profileRows.values.firstOrNull()?.parent as? View ?: return
++        if (row.height <= 0) return
++        val rows = profileRows.size.coerceIn(1, 5)
++        val target = (row.height + dp(3)) * rows + dp(2)
++        if (scroll.height != target) scroll.layoutParams = scroll.layoutParams.apply { height = target }
++        val nav = androidx.core.view.ViewCompat.getRootWindowInsets(scroll)
++            ?.getInsets(androidx.core.view.WindowInsetsCompat.Type.navigationBars())?.bottom ?: 0
++        minimalBlock?.let { block ->
++            (block.layoutParams as? android.view.ViewGroup.MarginLayoutParams)?.let { params ->
++                val margin = nav + dp(4)
++                if (params.bottomMargin != margin) { params.bottomMargin = margin; block.layoutParams = params }
++            }
++        }
++    }
+     private fun tile(selected: Boolean = false): android.graphics.drawable.Drawable {
+         return if(selected) MobilePalette.selectedShape(requireContext(),blue) else MobilePalette.rowShape(requireContext())
+     }
+@@ -607,7 +629,8 @@ class MobileHomeFragment : ToolbarFragment() {
+     fun updateSpeed(down: Long, up: Long) {
+         if(!isAdded) return
+         lastDown=down;lastUp=up
+-        sheetSpeed?.visibility=View.VISIBLE
++        if(minimalHome) { sheetSpeed?.visibility=View.GONE; sheetDown?.visibility=View.GONE; sheetUp?.visibility=View.GONE }
++        else sheetSpeed?.visibility=View.VISIBLE
+         sheetDown?.text="↓ "+rateText(down)
+         sheetUp?.text="↑ "+rateText(up)
+     }
+@@ -896,6 +919,10 @@ class MobileHomeFragment : ToolbarFragment() {
+                     }
+                     addView(groupChip,LinearLayout.LayoutParams(0,dp(48),1f).apply { marginEnd=dp(8) })
+                     addView(addTile,LinearLayout.LayoutParams(dp(48),dp(48)))
++                    if (minimalHome) {
++                        minimalChipActions = LinearLayout(requireContext()).apply { gravity = Gravity.CENTER_VERTICAL }
++                        addView(minimalChipActions, LinearLayout.LayoutParams(-2, dp(48)))
++                    }
+                 }
+                 val chipNear=chipNearList()
+                 if(!chipBottom && !chipNear) chipRow?.let { side.addView(it,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }) }
+@@ -953,14 +980,17 @@ class MobileHomeFragment : ToolbarFragment() {
+                 } else {
+                 power = action("") { if(!powerCovered()) host().toggleService() }.apply {
+                     contentDescription = getString(R.string.qmobile_connect)
+-                    background = MobileOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
++                    background = if (minimalHome) {
++                        if (PowerButtonStyle.courtyard) CourtyardOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
++                        else IndustrialOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
++                    } else MobileOrbArtwork(requireContext(),getString(R.string.qmobile_orb_idle))
+                     // A remote or keyboard has no ripple to show where it stands.
+                     setOnFocusChangeListener { button,focused -> (button.background as? MobilePowerArtwork)?.focused=focused }
+                     var pressAnimator: android.animation.ValueAnimator? = null
+                     setOnTouchListener { _, event ->
+                         // The new button spans its row for the line under it: only a touch on the disc presses it.
+                         if(event.actionMasked==android.view.MotionEvent.ACTION_DOWN) {
+-                            val disc=dp(MobileHomeLayout.orbSize(true))
++                            val disc=dp(if (minimalHome) 340 else MobileHomeLayout.orbSize(true))
+                             val reach=MobileOrbArtwork.radius(disc)*1.35f
+                             val dx=event.x-width/2f; val dy=event.y-MobileOrbArtwork.centerY(disc)
+                             if(dx*dx+dy*dy>reach*reach) return@setOnTouchListener true
+@@ -986,16 +1016,21 @@ class MobileHomeFragment : ToolbarFragment() {
+                 run {
+                     // A smaller button right under the subscription: the servers and the subscription's actions keep the screen.
+                     // The view spans the row and is 16 dp taller than the disc: the subscription and server line has the width.
+-                    val orb=MobileHomeLayout.orbSize(true)
++                    val orb=if (minimalHome) 340 else MobileHomeLayout.orbSize(true)
+                     val artwork=power?.background as? MobileOrbArtwork
+                     artwork?.discSize=dp(orb)
+-                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
++                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), (if(minimalHome) Gravity.CENTER else Gravity.TOP) or Gravity.CENTER_HORIZONTAL))
+                     if(dockBottom) {
+                         centre.background=MobileDockGlass(MobilePalette.cardDp*resources.displayMetrics.density,MobileOrbArtwork.centerY(dp(orb)),MobileOrbArtwork.radius(dp(orb))*1.26f,dp(104*orb/190).toFloat())
+                         // The check and the speed hold the dock's lower corners: the line keeps between them.
+                         power?.addOnLayoutChangeListener { view,_,_,_,_,_,_,_,_ -> artwork?.textRoom=(view.width-2*dp(14+92+6)).toFloat() }
+                     }
+-                    controlParent.addView(centre, LinearLayout.LayoutParams(-1, dp(if(dockBottom) orb+20 else orb+16)).apply { topMargin=dp(4) })
++                    if (minimalHome && !dockBottom) {
++                        // The button takes all the room above the pinned server block.
++                        controlParent.addView(centre, LinearLayout.LayoutParams(-1, 0, 1f).apply { topMargin=dp(4) })
++                    } else {
++                        controlParent.addView(centre, LinearLayout.LayoutParams(-1, dp(if(dockBottom) orb+20 else orb+16)).apply { topMargin=dp(4) })
++                    }
+                     // The subscription and the server on two lines when one is too narrow for them: the button grows by that line.
+                     artwork?.linesChanged={ lines -> centre.post {
+                         val extra=if(lines==2) dp(16) else 0
+@@ -1031,6 +1066,7 @@ class MobileHomeFragment : ToolbarFragment() {
+                     else side.addView(statusRow,LinearLayout.LayoutParams(-1,dp(34)))
+                     }
+                 }
++                minimalStatusRow=statusRow ?: sheetSpeed
+                 updateState()
+                 val imports = LinearLayout(requireContext())
+                 fun importButton(label: String, icon: Int, callback: () -> Unit) = LinearLayout(requireContext()).apply {
+@@ -1085,7 +1121,8 @@ class MobileHomeFragment : ToolbarFragment() {
+                 run {
+                     val area=FrameLayout(requireContext()).also { serverDropArea=it }
+                     area.addView(serverPanel,FrameLayout.LayoutParams(-1,-2))
+-                    body.addView(area,LinearLayout.LayoutParams(-1,0,1f))
++                    if (minimalHome) minimalBlock = area
++                    body.addView(area, if (minimalHome) LinearLayout.LayoutParams(-1,-2).apply { bottomMargin=dp(4) } else LinearLayout.LayoutParams(-1,0,1f))
+                     val tabs=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(6),0,0) }
+                     fun indicator(left: Boolean)=ImageView(requireContext()).apply {
+                         setImageResource(R.drawable.ic_mobile_chevron)
+@@ -1233,6 +1270,7 @@ class MobileHomeFragment : ToolbarFragment() {
+             nextProfileReorders.keys.retainAll(setOf(focusedGroup))
+ 
+             var firstGroup = true
++            var minimalActionsPlaced = false
+             for ((groupIndex, pair) in groups.withIndex()) {
+                 val (group,profiles)=pair
+                 if(group.id!=focusedGroup) continue
+@@ -1280,10 +1318,13 @@ class MobileHomeFragment : ToolbarFragment() {
+                 }
+                 val heading = LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,0,0); isFocusable=true }
+                 heading.addView(arrow,LinearLayout.LayoutParams(dp(20),dp(20)))
+-                val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
+-                names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END })
+-                if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
+-                heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
++                // The group name already sits in the picker above: in the minimal home the header keeps only its actions.
++                if (!minimalHome) {
++                    val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
++                    names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=1; ellipsize=android.text.TextUtils.TruncateAt.END })
++                    if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
++                    heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
++                }
+                 run {
+                     val gestures=GestureDetector(requireContext(),object:GestureDetector.SimpleOnGestureListener() {
+                         override fun onDown(event:MotionEvent)=true
+@@ -1300,16 +1341,25 @@ class MobileHomeFragment : ToolbarFragment() {
+                     })
+                     heading.setOnTouchListener { _,event -> gestures.onTouchEvent(event) }
+                 }
+-                title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
+-                if (group.isSubscription) title.addView(iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this },LinearLayout.LayoutParams(dp(40),dp(48)))
+-                title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
++                val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
+                 lateinit var more: ImageButton
+                 more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
+-                title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
+-                head.addView(title)
++                val actions = minimalChipActions
++                if (minimalHome && actions != null && !minimalActionsPlaced) {
++                    // One line: the group picker, add, refresh and the menu share the same row.
++                    minimalActionsPlaced = true
++                    refresh?.let { actions.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
++                    actions.addView(more, LinearLayout.LayoutParams(dp(44), dp(48)))
++                } else {
++                    title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
++                    refresh?.let { title.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
++                    if(!minimalHome) title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
++                    title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
++                    head.addView(title)
++                }
+                 // Which routing this subscription's servers run with, one line above its card and notes.
+                 // As wide as its text, so a press lights the line itself and not the whole width of the card.
+-                if (signature.route.isNotEmpty()) head.addView(text(signature.route,11f,muted).apply {
++                if (!minimalHome && signature.route.isNotEmpty()) head.addView(text(signature.route,11f,muted).apply {
+                     // Wraps rather than cutting the Xray part of the label off.
+                     maxLines=3
+                     setPadding(dp(8),dp(4),dp(10),dp(4));compoundDrawablePadding=dp(6);gravity=Gravity.CENTER_VERTICAL
+@@ -1318,7 +1368,7 @@ class MobileHomeFragment : ToolbarFragment() {
+                     contentDescription=signature.route
+                     isFocusable=true;setOnClickListener { routePicker() };MobileFeedback.apply(this,radius=12f)
+                 },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6);bottomMargin=dp(4) })
+-                if (group.isSubscription && group.subOptions.showInfoCard) {
++                if (!minimalHome && group.isSubscription && group.subOptions.showInfoCard) {
+                     val quota=group.subInfo
+                     val traffic=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,dp(12),dp(8)) }
+                     traffic.addView(iconAction(R.drawable.ic_mobile_info,getString(R.string.qmobile_subscription_info)) {
+@@ -1476,6 +1526,7 @@ class MobileHomeFragment : ToolbarFragment() {
+             updateSubscriptionButtons()
+             updateLatencies()
+             updateState()
++            if (minimalHome) serverScrollView?.post { sizeMinimalServerList() }
+             // Commit only a completed render: a cancelled page build must be retried.
+             renderedStructure=structure
+             completed=true
+@@ -1520,7 +1571,7 @@ class MobileHomeFragment : ToolbarFragment() {
+             host().toggleService()
+         }
+         // The row under the button holds nothing while disconnected: it gives its room to the list; the dock's speeds keep theirs.
+-        sheetSpeed?.visibility=if(state.connected) View.VISIBLE else if(sheetSpeed?.getTag(R.id.home_part)!=null) View.GONE else View.INVISIBLE
++        sheetSpeed?.visibility=if(minimalHome) View.GONE else if(state.connected) View.VISIBLE else if(sheetSpeed?.getTag(R.id.home_part)!=null) View.GONE else View.INVISIBLE
+         if(!state.connected) { lastDown=0L;lastUp=0L }
+         modeSwitches.forEach { (mode,switch) -> switch.isChecked=(state.canStop || restartAfterStop) && DataStore.serviceMode==mode }
+         val test=TestSessionClient.state.value
+@@ -1545,7 +1596,8 @@ class MobileHomeFragment : ToolbarFragment() {
+         power?.setTextColor(muted)
+         (power?.background as? MobilePowerArtwork)?.connected=state.connected
+         (power?.background as? MobilePowerArtwork)?.connecting=state==app.rawline.mobile.bg.BaseService.State.Connecting
+-        currentCheck?.visibility=if(state.connected) View.VISIBLE else View.INVISIBLE
++        currentCheck?.visibility=if(!minimalHome && state.connected) View.VISIBLE else View.GONE
++        if(minimalHome) { minimalStatusRow?.visibility=View.GONE; subscriptionTop?.visibility=View.GONE }
+         power?.apply {
+             // The cell in a removed switch's place keeps its own alignment.
+             if(tag!=SWITCH_CELL) { textSize=13f;gravity=Gravity.CENTER;setPadding(0,if(background is MobilePowerArtwork) dp(75*MobileHomeLayout.orbSize(false)/188) else dp(8),0,0) }
+@@ -1572,9 +1624,11 @@ class MobileHomeFragment : ToolbarFragment() {
+                 workersText=snapshot?.takeIf { it.total>0 && !testing }?.let { "${it.active}/${it.total}" }.orEmpty()
+                 if(this is MobileOrbArtwork) {
+                     // The selected subscription and server, connected or not, on their own line under the button.
+-                    val (group,server)=runningServer()
+-                    groupText=group;serverText=server
+-                } else serverText=if(state.connected) runningServer().let { (group,server) -> if(group.isEmpty()) server else "[$group] $server" } else ""
++                    if(minimalHome) { groupText="";serverText="" } else {
++                        val (group,server)=runningServer()
++                        groupText=group;serverText=server
++                    }
++                } else serverText=if(!minimalHome && state.connected) runningServer().let { (group,server) -> if(group.isEmpty()) server else "[$group] $server" } else ""
+             }
+         }
+     }
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
+index 9d7e59e..73ed0ff 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileOrbArtwork.kt
+@@ -14,7 +14,7 @@ import kotlin.math.*
+  * The new style's connect button: a disc whose edge is a slow wave, stronger once connected, with rings travelling out of it.
+  * While connecting a bright stroke runs round the edge. Everything eases between the states; nothing jumps.
+  */
+-class MobileOrbArtwork(context: Context, private val idleText: String) : MobilePowerArtwork(0) {
++open class MobileOrbArtwork(context: Context, private val idleText: String) : MobilePowerArtwork(0) {
+     private val density = context.resources.displayMetrics.density
+     private val font = runCatching { ResourcesCompat.getFont(context, R.font.geologica) }.getOrNull() ?: Typeface.DEFAULT
+     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
+index 5bd220c..be8e063 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
+@@ -14,45 +14,81 @@ object MobileStyle {
+     const val modern = true
+ }
+ 
++/** A theme loaded from a JSON file; null fields fall back to the selected built-in palette. */
++object MobileThemes {
++    private const val KEY = "qmobileThemeJson"
++    data class Theme(
++        val name: String,
++        val accent: Int?, val background: Int?, val surface: Int?, val solid: Int?,
++        val toolbar: Int?, val text: Int?, val muted: Int?, val well: Int?, val frosted: Int?,
++        val rowDp: Int?, val cardDp: Int?, val wellDp: Int?,
++    )
++    @Volatile private var raw: String? = null
++    @Volatile private var parsed: Theme? = null
++    @Volatile private var loaded = false
++    val current: Theme? get() {
++        val value = DataStore.configurationStore.getString(KEY).orEmpty()
++        if (!loaded || value != raw) {
++            raw = value
++            parsed = runCatching { parse(value) }.getOrNull()
++            loaded = true
++        }
++        return parsed
++    }
++    fun save(json: String) { DataStore.configurationStore.putString(KEY, json); loaded = false }
++    fun clear() { DataStore.configurationStore.putString(KEY, ""); loaded = false }
++    fun name() = current?.name.orEmpty()
++    private fun parse(json: String): Theme? {
++        if (json.isBlank()) return null
++        val o = org.json.JSONObject(json)
++        fun color(key: String) = o.optString(key).takeIf { it.isNotBlank() }?.let { Color.parseColor(it) }
++        fun radius(key: String) = o.optInt(key, 0).takeIf { it in 0..64 }
++        return Theme(o.optString("name", "Theme"), color("accent"), color("background"), color("surface"),
++            color("solid"), color("toolbar"), color("text"), color("muted"), color("well"), color("frosted"),
++            radius("rowDp"), radius("cardDp"), radius("wellDp"))
++    }
++}
++
+ object MobilePalette {
++    private val custom get() = MobileThemes.current
+     /** Every night is OLED black, except Pastel's, which stays plum. */
+     val oled get() = Theme.usingNightMode() && !MobileStyle.pastel
+     val light get() = !oled && !Theme.usingNightMode()
+     private val lilac = Color.rgb(0x7C, 0x6B, 0xF2)
+-    val background get() = when {
++    val background get() = custom?.background ?: when {
+         MobileStyle.pastel && light -> Color.rgb(255, 228, 214)
+         MobileStyle.pastel -> Color.rgb(22, 20, 31)
+         light -> Color.WHITE
+         else -> Color.BLACK
+     }
+     /** Translucent in the new style: anything that has to hide what is under it uses [solid] or [frosted]. */
+-    val surface get() = when {
++    val surface get() = custom?.surface ?: when {
+         MobileStyle.pastel && light -> Color.WHITE
+         MobileStyle.pastel -> Color.rgb(42, 36, 62)
+         light -> Color.argb(190, 255, 255, 255)
+         else -> Color.argb(18, 255, 255, 255)
+     }
+-    val solid get() = when {
++    val solid get() = custom?.solid ?: when {
+         MobileStyle.pastel && light -> Color.rgb(255, 247, 252)
+         MobileStyle.pastel -> Color.rgb(36, 31, 51)
+         light -> Color.rgb(243, 243, 246)
+         else -> Color.rgb(21, 21, 24)
+     }
+-    val toolbar get() = Color.TRANSPARENT
+-    val text get() = when {
++    val toolbar get() = custom?.toolbar ?: Color.TRANSPARENT
++    val text get() = custom?.text ?: when {
+         MobileStyle.pastel && light -> Color.rgb(0x1B, 0x1C, 0x2A)
+         MobileStyle.pastel -> Color.rgb(0xF4, 0xF2, 0xFA)
+         light -> Color.rgb(10, 10, 11)
+         else -> Color.rgb(245, 245, 247)
+     }
+-    val muted get() = when {
++    val muted get() = custom?.muted ?: when {
+         MobileStyle.pastel && light -> Color.rgb(110, 108, 136)
+         MobileStyle.pastel -> Color.rgb(176, 170, 198)
+         light -> Color.rgb(105, 105, 112)
+         else -> Color.rgb(142, 142, 150)
+     }
+     /** The dark field inside a card; on true black a lighter one, or it would vanish. */
+-    val well get() = when {
++    val well get() = custom?.well ?: when {
+         MobileStyle.pastel && light -> Color.argb(18, 124, 107, 242)
+         MobileStyle.pastel -> Color.argb(28, 255, 255, 255)
+         light -> Color.argb(16, 0, 0, 0)
+@@ -61,16 +97,16 @@ object MobilePalette {
+     /** The editor's small round buttons: solid, a step lighter (or darker) than the screen, in either theme. */
+     val badge get() = androidx.core.graphics.ColorUtils.blendARGB(background, text, if (light) .09f else .2f)
+     /** Corner radii in dp. */
+-    const val rowDp = 20
+-    const val cardDp = 28
+-    const val wellDp = 18
++    val rowDp get() = custom?.rowDp ?: 20
++    val cardDp get() = custom?.cardDp ?: 28
++    val wellDp get() = custom?.wellDp ?: 18
+     /** A screen's own colour: the screens let the backdrop through. */
+     val screen = Color.TRANSPARENT
+     /** Over content that must stay readable: notices, dialogs, sheets. */
+     /** The blur behind sheets and dialogs: enough to lift them off the screen, while what is behind stays recognisable. */
+     const val BLUR_DP = 20
+     val windowDim get() = if (light) .35f else .6f
+-    val frosted get() = when {
++    val frosted get() = custom?.frosted ?: when {
+         MobileStyle.pastel && light -> Color.argb(248, 255, 250, 252)
+         MobileStyle.pastel -> Color.argb(248, 24, 20, 36)
+         light -> Color.argb(248, 250, 250, 252)
+@@ -78,7 +114,7 @@ object MobilePalette {
+     }
+     val outline get() = androidx.core.graphics.ColorUtils.setAlphaComponent(muted,55)
+     @Suppress("UNUSED_PARAMETER")
+-    fun accent(context: Context) = if (MobileStyle.pastel) lilac else text
++    fun accent(context: Context) = custom?.accent ?: if (MobileStyle.pastel) lilac else text
+ 
+     /** A row or button: every list row and action in the app. */
+     fun rowShape(context: Context): android.graphics.drawable.Drawable = shape(context, rowDp)
+@@ -88,7 +124,7 @@ object MobilePalette {
+     fun selectedShape(context: Context, color: Int = accent(context)): android.graphics.drawable.Drawable {
+         val density = context.resources.displayMetrics.density
+         // The row's own plate a step towards lilac, with a lilac edge: set apart from the rows around it, not a blue wash.
+-        if (MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
++        if (custom == null && MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
+             setColor(androidx.core.graphics.ColorUtils.blendARGB(if (light) Color.WHITE else Color.rgb(42, 36, 62), lilac, if (light) .12f else .22f))
+             setStroke((1.5f * density).toInt().coerceAtLeast(1), androidx.core.graphics.ColorUtils.setAlphaComponent(lilac, if (light) 200 else 230))
+             cornerRadius = rowDp * density
+@@ -106,7 +142,7 @@ object MobilePalette {
+     }
+     private fun shape(context: Context, radius: Int): android.graphics.drawable.Drawable {
+         val density = context.resources.displayMetrics.density
+-        if (MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
++        if (custom == null && MobileStyle.pastel) return android.graphics.drawable.GradientDrawable().apply {
+             setColor(if (light) Color.WHITE else Color.rgb(42, 36, 62))
+             cornerRadius = radius * density
+         }
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt
+new file mode 100644
+index 0000000..901457a
+--- /dev/null
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/PowerButtonStyle.kt
+@@ -0,0 +1,15 @@
++package app.rawline.mobile.ui
++
++import app.rawline.mobile.database.DataStore
++
++/** Visual-only preferences; these never alter routing, transports or the service state. */
++object PowerButtonStyle {
++    const val SKIN = "localPowerSkin"
++    const val ARCS = "localPowerArcs"
++    const val FURNACE = "localPowerFurnace"
++    const val SNOW = "localPowerSnow"
++    val courtyard get() = DataStore.configurationStore.getString(SKIN, "courtyard") != "hatch"
++    val arcs get() = DataStore.configurationStore.getInt(ARCS, 100).coerceIn(0, 180) / 100f
++    val furnace get() = DataStore.configurationStore.getInt(FURNACE, 100).coerceIn(0, 160) / 100f
++    val snow get() = DataStore.configurationStore.getInt(SNOW, 75).coerceIn(0, 150) / 100f
++}
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
+index 31294ee..2830c6e 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
+@@ -6,6 +6,8 @@ import android.net.Uri
+ import android.os.Build
+ import android.provider.Settings
+ import android.view.View
++import android.widget.Toast
++import androidx.activity.result.contract.ActivityResultContracts
+ import androidx.core.app.ActivityCompat
+ import androidx.core.app.NotificationManagerCompat
+ import androidx.preference.MultiSelectListPreference
+@@ -116,6 +118,23 @@ class GeneralSettingsFragment : SettingsScreenFragment(R.xml.settings_general) {
+ /** Theme, language, profile list and notification options (all Android-only). */
+ class AppearanceSettingsFragment : SettingsScreenFragment(R.xml.settings_appearance) {
+ 
++    /** A theme JSON chosen from storage: stored as text, so it survives restarts without a rebuild. */
++    private val pickTheme = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
++        if (uri == null) return@registerForActivityResult
++        val context = requireContext()
++        val text = runCatching {
++            context.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() }
++        }.getOrNull()
++        val parsed = text?.let { runCatching { org.json.JSONObject(it) }.getOrNull() }
++        if (text == null || parsed == null) {
++            Toast.makeText(context, R.string.qmobile_theme_invalid, Toast.LENGTH_LONG).show()
++            return@registerForActivityResult
++        }
++        app.rawline.mobile.ui.MobileThemes.save(text)
++        Toast.makeText(context, context.getString(R.string.qmobile_theme_loaded, parsed.optString("name", "")), Toast.LENGTH_SHORT).show()
++        applyThemeInstantly()
++    }
++
+     override fun onViewCreated(view: View, savedInstanceState: android.os.Bundle?) {
+         super.onViewCreated(view, savedInstanceState)
+         findPreference<SimpleMenuPreference>("qmobileSurfaceTheme")?.let(::showSurfaceChoice)
+@@ -128,6 +147,32 @@ class AppearanceSettingsFragment : SettingsScreenFragment(R.xml.settings_appeara
+     }
+ 
+     override fun bind() {
++        pref<SimpleMenuPreference>(app.rawline.mobile.ui.PowerButtonStyle.SKIN).setOnPreferenceChangeListener { _, _ ->
++            applyThemeInstantly()
++            true
++        }
++        for (key in listOf(app.rawline.mobile.ui.PowerButtonStyle.ARCS,
++            app.rawline.mobile.ui.PowerButtonStyle.FURNACE, app.rawline.mobile.ui.PowerButtonStyle.SNOW)) {
++            pref<androidx.preference.SeekBarPreference>(key).setOnPreferenceChangeListener { _, _ ->
++                applyThemeInstantly()
++                true
++            }
++        }
++        pref<Preference>("qmobileThemeFile").apply {
++            summary = app.rawline.mobile.ui.MobileThemes.name().ifEmpty { getString(R.string.qmobile_theme_file_summary) }
++            setOnPreferenceClickListener {
++                runCatching { pickTheme.launch(arrayOf("application/json", "text/plain", "*/*")) }
++                true
++            }
++        }
++        pref<Preference>("qmobileThemeReset").apply {
++            isVisible = app.rawline.mobile.ui.MobileThemes.name().isNotEmpty()
++            setOnPreferenceClickListener {
++                app.rawline.mobile.ui.MobileThemes.clear()
++                applyThemeInstantly()
++                true
++            }
++        }
+         pref<Preference>("qmobileEditLayout").setOnPreferenceClickListener {
+             startActivity(android.content.Intent(requireContext(), app.rawline.mobile.ui.MobileLayoutEditorActivity::class.java)); true
+         }
+diff --git a/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt b/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
+index 676cfaa..80b061e 100644
+--- a/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
++++ b/app/src/main/java/io/nekohasekai/sagernet/update/UpdateChecker.kt
+@@ -18,12 +18,12 @@ import java.io.IOException
+ import java.io.InputStream
+ 
+ /**
+- * GitHub releases of RawlineForAndroid (the desktop's CheckUpdate: `allow_beta_update` admits pre-releases). A release
+- * built by CI carries verification metadata in its body; legacy JSON assets remain supported.
++ * GitHub releases of Rawline-Bratiki. A custom release carries verification metadata in its body;
++ * downloaded APKs must match the installed application's signing certificate.
+  */
+ object UpdateChecker {
+ 
+-    const val REPOSITORY = "ttrroyy/RawlineMobile"
++    const val REPOSITORY = "patchedronin/Rawline-Bratiki"
+     const val RELEASES_PAGE = "https://github.com/$REPOSITORY/releases"
+     private const val RELEASES_API = "https://api.github.com/repos/$REPOSITORY/releases?per_page=20"
+     private const val MANIFEST = "rawline-update.json"
+@@ -151,7 +151,7 @@ object UpdateChecker {
+     }
+ 
+     private fun fetchReleases(context: Context, client: OkHttpClient): List<Release> {
+-        val cache = File(context.cacheDir, "update/releases.json")
++        val cache = File(context.cacheDir, "update/bratiki-releases.json")
+         val cached = runCatching { JSONObject(cache.readText()) }.getOrNull()
+         val request = Request.Builder().url(RELEASES_API)
+             .header("Accept", "application/vnd.github+json")
+diff --git a/app/src/main/res/values-ru/local_power_button.xml b/app/src/main/res/values-ru/local_power_button.xml
+new file mode 100644
+index 0000000..894673c
+--- /dev/null
++++ b/app/src/main/res/values-ru/local_power_button.xml
+@@ -0,0 +1,8 @@
++<resources>
++    <string name="local_power_skin">Оформление кнопки подключения</string>
++    <string name="local_power_arcs">Интенсивность молний</string>
++    <string name="local_power_furnace">Зарево ТЭЦ</string>
++    <string name="local_power_snow">Снег / пепел</string>
++    <string name="local_power_effects_summary">Эффекты двора; настройки VPN не меняются</string>
++    <string-array name="local_power_skins"><item>Люк</item><item>Двор с ТЭЦ</item></string-array>
++</resources>
+diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
+index c4b5faa..ad946e3 100644
+--- a/app/src/main/res/values-ru/strings.xml
++++ b/app/src/main/res/values-ru/strings.xml
+@@ -2693,4 +2693,9 @@
+     <string name="sniff_route_only_sum">Использовать SNI или host из сниффинга только для выбора маршрута, не подменяя адрес соединения. Оставьте включённым, если серверу не нужно маршрутизировать по доменам, например в каскаде</string>
+     <string name="http_proxy_auth">Авторизация HTTP-прокси</string>
+     <string name="http_proxy_auth_sum">Защищать HTTP-прокси тем же логином и паролем. Действует только при включённом доступе с других устройств</string>
++    <string name="qmobile_theme_file">Тема из файла</string>
++    <string name="qmobile_theme_file_summary">JSON с цветами применяется без пересборки приложения</string>
++    <string name="qmobile_theme_reset">Вернуть встроенную тему</string>
++    <string name="qmobile_theme_invalid">Не удалось прочитать тему: нужен корректный JSON</string>
++    <string name="qmobile_theme_loaded">Тема «%1$s» применена</string>
+ </resources>
+diff --git a/app/src/main/res/values/local_power_button.xml b/app/src/main/res/values/local_power_button.xml
+new file mode 100644
+index 0000000..ff597e3
+--- /dev/null
++++ b/app/src/main/res/values/local_power_button.xml
+@@ -0,0 +1,9 @@
++<resources>
++    <string name="local_power_skin">Connect button appearance</string>
++    <string name="local_power_arcs">Lightning intensity</string>
++    <string name="local_power_furnace">Power plant glow</string>
++    <string name="local_power_snow">Snow / ash</string>
++    <string name="local_power_effects_summary">Visual effects for the courtyard; no changes to VPN settings</string>
++    <string-array name="local_power_skins"><item>Hatch</item><item>Courtyard with power plant</item></string-array>
++    <string-array name="local_power_skin_values"><item>hatch</item><item>courtyard</item></string-array>
++</resources>
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index 7bec263..fa6c11c 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -2820,4 +2820,9 @@
+     <string name="sniff_route_only_sum">Use the sniffed SNI or host only to pick the route, without replacing the connection address. Keep it on unless the server has to route by domain, for example in a cascade</string>
+     <string name="http_proxy_auth">HTTP proxy authentication</string>
+     <string name="http_proxy_auth_sum">Protect the HTTP proxy with the same login and password. Applies only while access from other devices is on</string>
++    <string name="qmobile_theme_file">Theme from file</string>
++    <string name="qmobile_theme_file_summary">A JSON palette applied without rebuilding the app</string>
++    <string name="qmobile_theme_reset">Restore the built-in theme</string>
++    <string name="qmobile_theme_invalid">Could not read the theme: a valid JSON file is required</string>
++    <string name="qmobile_theme_loaded">Theme “%1$s” applied</string>
+ </resources>
+diff --git a/app/src/main/res/xml/settings_appearance.xml b/app/src/main/res/xml/settings_appearance.xml
+index 9c39fd1..fd3192a 100644
+--- a/app/src/main/res/xml/settings_appearance.xml
++++ b/app/src/main/res/xml/settings_appearance.xml
+@@ -1,7 +1,13 @@
+ <?xml version="1.0" encoding="utf-8"?>
+-<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto">
++<PreferenceScreen xmlns:app="http://schemas.android.com/apk/res-auto" xmlns:android="http://schemas.android.com/apk/res/android">
+  <PreferenceCategory app:title="@string/settings_appearance">
+   <moe.matsuri.nb4a.ui.SimpleMenuPreference app:key="qmobileSurfaceTheme" app:icon="@drawable/ic_mobile_theme" app:title="@string/theme" app:persistent="false" app:entries="@array/qmobile_surface_themes_new" app:entryValues="@array/qmobile_surface_values_new" app:useSimpleSummaryProvider="true" />
++  <Preference app:key="qmobileThemeFile" app:icon="@drawable/ic_mobile_theme" app:title="@string/qmobile_theme_file" app:summary="@string/qmobile_theme_file_summary" />
++  <Preference app:key="qmobileThemeReset" app:icon="@drawable/ic_mobile_theme" app:title="@string/qmobile_theme_reset" app:persistent="false" />
++  <moe.matsuri.nb4a.ui.SimpleMenuPreference app:key="localPowerSkin" app:icon="@drawable/ic_mobile_theme" app:title="@string/local_power_skin" app:defaultValue="courtyard" app:entries="@array/local_power_skins" app:entryValues="@array/local_power_skin_values" app:useSimpleSummaryProvider="true" />
++  <androidx.preference.SeekBarPreference app:key="localPowerArcs" app:title="@string/local_power_arcs" app:defaultValue="100" app:min="0" android:max="180" app:showSeekBarValue="true" app:seekBarIncrement="10" />
++  <androidx.preference.SeekBarPreference app:key="localPowerFurnace" app:title="@string/local_power_furnace" app:defaultValue="100" app:min="0" android:max="160" app:showSeekBarValue="true" app:seekBarIncrement="10" />
++  <androidx.preference.SeekBarPreference app:key="localPowerSnow" app:title="@string/local_power_snow" app:summary="@string/local_power_effects_summary" app:defaultValue="75" app:min="0" android:max="150" app:showSeekBarValue="true" app:seekBarIncrement="25" />
+   <Preference app:key="qmobileEditLayout" app:icon="@drawable/ic_mobile_dock_bottom" app:title="@string/qmobile_edit_layout" app:persistent="false" />
+   <moe.matsuri.nb4a.ui.SimpleMenuPreference app:defaultValue="" app:entries="@array/language_entries" app:entryValues="@array/language_values" app:key="appLanguage" app:icon="@drawable/ic_mobile_language" app:title="@string/language" app:useSimpleSummaryProvider="true" />
+  </PreferenceCategory>

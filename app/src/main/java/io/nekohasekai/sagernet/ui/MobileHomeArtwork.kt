@@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable
 class MobileHomeBackdrop : Drawable() {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     override fun draw(canvas: Canvas) {
+        if (MobileThemes.current != null) { canvas.drawColor(MobilePalette.background); return }
         if(MobileStyle.pastel) { drawPastel(canvas); return }
         if(MobileStyle.new) {
             // Soft light for the glass to lie on: true black or white stays the base.

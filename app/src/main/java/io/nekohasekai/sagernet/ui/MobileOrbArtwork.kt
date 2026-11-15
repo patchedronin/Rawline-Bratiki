@@ -14,7 +14,7 @@ import kotlin.math.*
  * The new style's connect button: a disc whose edge is a slow wave, stronger once connected, with rings travelling out of it.
  * While connecting a bright stroke runs round the edge. Everything eases between the states; nothing jumps.
  */
-class MobileOrbArtwork(context: Context, private val idleText: String) : MobilePowerArtwork(0) {
+open class MobileOrbArtwork(context: Context, private val idleText: String) : MobilePowerArtwork(0) {
     private val density = context.resources.displayMetrics.density
     private val font = runCatching { ResourcesCompat.getFont(context, R.font.geologica) }.getOrNull() ?: Typeface.DEFAULT
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)

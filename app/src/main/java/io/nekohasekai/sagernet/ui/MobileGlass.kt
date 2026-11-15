@@ -44,6 +44,18 @@ class MobileGlass(val radius: Float, private val tint: Int? = null) : Drawable()
 
     override fun draw(canvas: Canvas) {
         if (bounds.isEmpty) return
+        val custom = MobileThemes.current
+        if (custom != null) {
+            paint.style = Paint.Style.FILL
+            paint.shader = null
+            paint.color = tint?.let { androidx.core.graphics.ColorUtils.setAlphaComponent(it, 46) } ?: MobilePalette.surface
+            canvas.drawRoundRect(box, corner, corner, paint)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = density * .75f
+            paint.color = tint ?: MobilePalette.outline
+            canvas.drawRoundRect(box, corner, corner, paint)
+            return
+        }
         if (MobileStyle.pastel && tint == null) {
             paint.style = Paint.Style.FILL
             paint.shader = null
@@ -118,6 +130,13 @@ class MobileDockGlass(private val corner: Float, private val discY: Float, priva
 
     override fun draw(canvas: Canvas) {
         if (bounds.isEmpty) return
+        if (MobileThemes.current != null) {
+            paint.style = Paint.Style.FILL; paint.shader = null; paint.color = MobilePalette.surface
+            canvas.drawPath(shape, paint)
+            paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.color = MobilePalette.outline
+            canvas.drawPath(shape, paint)
+            return
+        }
         paint.style = Paint.Style.FILL; paint.shader = body
         canvas.drawPath(shape, paint)
         paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.shader = rim

@@ -18,12 +18,12 @@ import java.io.IOException
 import java.io.InputStream
 
 /**
- * GitHub releases of RawlineForAndroid (the desktop's CheckUpdate: `allow_beta_update` admits pre-releases). A release
- * built by CI carries verification metadata in its body; legacy JSON assets remain supported.
+ * GitHub releases of Rawline-Bratiki. A custom release carries verification metadata in its body;
+ * downloaded APKs must match the installed application's signing certificate.
  */
 object UpdateChecker {
 
-    const val REPOSITORY = "ttrroyy/RawlineMobile"
+    const val REPOSITORY = "patchedronin/Rawline-Bratiki"
     const val RELEASES_PAGE = "https://github.com/$REPOSITORY/releases"
     private const val RELEASES_API = "https://api.github.com/repos/$REPOSITORY/releases?per_page=20"
     private const val MANIFEST = "rawline-update.json"
@@ -151,7 +151,7 @@ object UpdateChecker {
     }
 
     private fun fetchReleases(context: Context, client: OkHttpClient): List<Release> {
-        val cache = File(context.cacheDir, "update/releases.json")
+        val cache = File(context.cacheDir, "update/bratiki-releases.json")
         val cached = runCatching { JSONObject(cache.readText()) }.getOrNull()
         val request = Request.Builder().url(RELEASES_API)
             .header("Accept", "application/vnd.github+json")
