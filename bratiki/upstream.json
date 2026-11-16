@@ -8,6 +8,14 @@
   "coreRef": "b8d5b41e4482bef0e8e1c3b10fe5aa6c75f143c7",
   "minSdk": 24,
   "signerSha256": "be9ab67830ce9f33b9ee808a94df999e43bce6acca58949cb8cdb6be1452b005",
+  "apks": {
+    "armeabi-v7a": {
+      "name": "RawlineMobile-1.1.4-armeabi-v7a.apk",
+      "size": 161008146,
+      "sha256": "d6dc7cdf8b8bb712d93cbb28582d96789e6a3ba724822569e2be0f44bac046a5",
+      "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/RawlineMobile-1.1.4-armeabi-v7a.apk"
+    }
+  },
   "apk": {
     "name": "RawlineMobile-1.1.4-arm64-v8a.apk",
     "size": 159883524,

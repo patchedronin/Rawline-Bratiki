@@ -2,6 +2,7 @@ package app.rawline.mobile.database
 
 import androidx.sqlite.db.SupportSQLiteDatabase
 import app.rawline.mobile.Key
+import app.rawline.mobile.SagerNet
 
 /** Seed only Room's onCreate transaction, never an upgrade, launch or backup restore. */
 internal object BratikiDefaults {
@@ -11,7 +12,8 @@ internal object BratikiDefaults {
             Key.PROXY_APPS to "true",
             Key.BYPASS_MODE to "false",
             // Keep package names, not device-specific UIDs; also works if installed later.
-            Key.INDIVIDUAL to "org.telegram.messenger\norg.telegram.messenger.web\ncom.google.android.youtube",
+            Key.INDIVIDUAL to ("org.telegram.messenger\norg.telegram.messenger.web\ncom.google.android.youtube" +
+                if (SagerNet.isTv) "\ncom.google.android.youtube.tv" else ""),
             Key.ALLOW_BYPASS to "false",
             "vpn_mtu" to "1200",
             "block_unowned_tun" to "true",

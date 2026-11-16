@@ -1,9 +1,9 @@
 diff --git a/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt b/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..b1a0f27c53394d22a08091fc37fd2122cad1be9c
+index 0000000000000000000000000000000000000000..5bdf44fdb86b64a7f5fce6f96986409a2a2a1506
 --- /dev/null
 +++ b/app/src/androidTest/java/app/rawline/mobile/BratikiDefaultsTest.kt
-@@ -0,0 +1,43 @@
+@@ -0,0 +1,45 @@
 +package app.rawline.mobile
 +
 +import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -27,7 +27,9 @@ index 0000000000000000000000000000000000000000..b1a0f27c53394d22a08091fc37fd2122
 +                val store = SettingsStore({ db })
 +                assertTrue(store.getBoolean(Key.PROXY_APPS, false))
 +                assertFalse(store.getBoolean(Key.BYPASS_MODE, true))
-+                assertEquals(setOf("org.telegram.messenger", "org.telegram.messenger.web", "com.google.android.youtube"),
++                val expected = setOf("org.telegram.messenger", "org.telegram.messenger.web", "com.google.android.youtube") +
++                    if (SagerNet.isTv) setOf("com.google.android.youtube.tv") else emptySet()
++                assertEquals(expected,
 +                    store.getString(Key.INDIVIDUAL).orEmpty().lines().toSet())
 +                assertFalse(store.getBoolean(Key.ALLOW_BYPASS, true))
 +                assertTrue(store.getBoolean("block_unowned_tun", false))
@@ -139,14 +141,15 @@ index dab44aad395bd898c6b639edf5699f3076537088..6dbb35856e7cb23da5fe4f895531d556
          if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q && options.isHTTPProxyEnabled()) {
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt b/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt
 new file mode 100644
-index 0000000000000000000000000000000000000000..6c869507b27812fa66521e41399882abeb0ed2cd
+index 0000000000000000000000000000000000000000..e6238bbfa1d89b4ce512727951caffc9ecfc6483
 --- /dev/null
 +++ b/app/src/main/java/io/nekohasekai/sagernet/database/BratikiDefaults.kt
-@@ -0,0 +1,40 @@
+@@ -0,0 +1,42 @@
 +package app.rawline.mobile.database
 +
 +import androidx.sqlite.db.SupportSQLiteDatabase
 +import app.rawline.mobile.Key
++import app.rawline.mobile.SagerNet
 +
 +/** Seed only Room's onCreate transaction, never an upgrade, launch or backup restore. */
 +internal object BratikiDefaults {
@@ -156,7 +159,8 @@ index 0000000000000000000000000000000000000000..6c869507b27812fa66521e41399882ab
 +            Key.PROXY_APPS to "true",
 +            Key.BYPASS_MODE to "false",
 +            // Keep package names, not device-specific UIDs; also works if installed later.
-+            Key.INDIVIDUAL to "org.telegram.messenger\norg.telegram.messenger.web\ncom.google.android.youtube",
++            Key.INDIVIDUAL to ("org.telegram.messenger\norg.telegram.messenger.web\ncom.google.android.youtube" +
++                if (SagerNet.isTv) "\ncom.google.android.youtube.tv" else ""),
 +            Key.ALLOW_BYPASS to "false",
 +            "vpn_mtu" to "1200",
 +            "block_unowned_tun" to "true",

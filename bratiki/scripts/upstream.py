@@ -96,19 +96,26 @@ def metadata(item, tree, commit):
     require(manifest["versionCode"] == int(props["VERSION_CODE"]) * 1000 + 999, "Unexpected upstream version code")
     core = props.get("THRONE_AAR_REF", props.get("THRONE_CORE_REF"))
     require(core == manifest["coreRef"] and re.fullmatch(r"[a-f0-9]{40}", core), "Upstream core pin differs")
-    asset = manifest["assets"]["arm64-v8a"]
-    require(re.fullmatch(r"[a-zA-Z0-9._-]+\.apk", asset["name"]), "Unsafe upstream APK name")
-    candidates = [a for a in item["assets"] if a["name"] == asset["name"]]
-    require(len(candidates) == 1, "Upstream APK missing or ambiguous")
-    apk = candidates[0]
-    require(apk["size"] == asset["size"] and apk.get("digest") == "sha256:" + asset["sha256"], "Upstream digest differs")
-    require(re.fullmatch(r"[a-f0-9]{64}", asset["sha256"]), "Invalid upstream APK SHA-256")
-    url = f'https://github.com/{UPSTREAM}/releases/download/{item["tag_name"]}/{asset["name"]}'
-    require(apk["browser_download_url"] == url, "Unexpected upstream APK URL")
+    def checked_asset(abi):
+        asset = manifest["assets"][abi]
+        require(re.fullmatch(r"[a-zA-Z0-9._-]+\.apk", asset["name"]), "Unsafe upstream APK name")
+        candidates = [a for a in item["assets"] if a["name"] == asset["name"]]
+        require(len(candidates) == 1, "Upstream APK missing or ambiguous")
+        apk = candidates[0]
+        require(apk["size"] == asset["size"] and apk.get("digest") == "sha256:" + asset["sha256"], "Upstream digest differs")
+        require(re.fullmatch(r"[a-f0-9]{64}", asset["sha256"]), "Invalid upstream APK SHA-256")
+        url = f'https://github.com/{UPSTREAM}/releases/download/{item["tag_name"]}/{asset["name"]}'
+        require(apk["browser_download_url"] == url, "Unexpected upstream APK URL")
+        return {**asset, "url": url}
+    asset = checked_asset("arm64-v8a")
+    extra = {}
+    # Once reviewed ABI support exists, upstream updates must keep it pinned too.
+    for abi in pin().get("apks", {}):
+        extra[abi] = checked_asset(abi)
     return {"schema": 1, "repository": UPSTREAM, "tag": item["tag_name"], "commit": commit,
             "versionName": props["VERSION_NAME"], "versionIndex": int(props["VERSION_CODE"]),
             "coreRef": core, "minSdk": manifest["minSdk"], "signerSha256": manifest["signerSha256"],
-            "apk": {**asset, "url": url}}
+            "apk": asset, **({"apks": extra} if extra else {})}
 
 
 def prepare(item, publish):

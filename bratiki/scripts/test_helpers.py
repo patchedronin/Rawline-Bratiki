@@ -25,7 +25,10 @@ class ApkStagingTest(unittest.TestCase):
         with zipfile.ZipFile(apk, "w") as archive:
             for name, data in entries.items():
                 archive.writestr(name, data)
-        pin = {"apk": {"size": apk.stat().st_size, "sha256": build.digest(apk)}, "signerSha256": "1234"}
+        pin = {"repository": "ttrroyy/RawlineMobile", "tag": "rawline-1.1.4",
+               "apk": {"name": "test.apk", "size": apk.stat().st_size, "sha256": build.digest(apk),
+                       "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/test.apk"},
+               "signerSha256": "1234"}
         return apk, pin
 
     def test_only_pinned_carriers_and_runtime_assets_are_staged(self):
@@ -79,6 +82,44 @@ class ApkStagingTest(unittest.TestCase):
                     patch.object(build.subprocess, "run", return_value=verified):
                 with self.assertRaisesRegex(ValueError, "signer"):
                     build.stage(SimpleNamespace(apk=apk, apksigner=Path("apksigner")))
+
+    def test_arm32_payload_uses_reviewed_pin_and_is_not_arm64(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            apk, fixture_pin = self.fixture(root)
+            with zipfile.ZipFile(apk) as old:
+                entries = {n.replace('arm64-v8a', 'armeabi-v7a'): old.read(n) for n in old.namelist()}
+            with zipfile.ZipFile(apk, 'w') as archive:
+                for name, data in entries.items():
+                    archive.writestr(name, data)
+            abi_pin = {"name": "upstream-arm.apk", "size": apk.stat().st_size, "sha256": build.digest(apk),
+                       "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/upstream-arm.apk"}
+            pin = {"repository": "ttrroyy/RawlineMobile", "tag": "rawline-1.1.4",
+                   "apk": fixture_pin["apk"], "apks": {"armeabi-v7a": abi_pin}, "signerSha256": "1234"}
+            verified = SimpleNamespace(stdout="Signer #1 certificate SHA-256 digest: 1234\n")
+            with patch.object(build, 'ROOT', root), patch.object(build, 'load_pin', return_value=pin), \
+                    patch.object(build.subprocess, 'run', return_value=verified):
+                build.stage(SimpleNamespace(apk=apk, apksigner=Path('apksigner'), abi='armeabi-v7a'))
+            self.assertTrue((root / 'deployment/carriers/armeabi-v7a/libcarrier.so').exists())
+            self.assertFalse((root / 'deployment/carriers/arm64-v8a').exists())
+            self.assertFalse((root / 'deployment/carriers/armeabi-v7a/librawline.so').exists())
+
+    def test_unreviewed_abi_is_rejected(self):
+        with self.assertRaisesRegex(ValueError, 'Unsupported ABI'):
+            build.selected_apk({}, 'x86')
+        with self.assertRaisesRegex(ValueError, 'reviewed upstream pin'):
+            build.selected_apk({}, 'armeabi-v7a')
+
+    def test_arm32_cannot_reuse_arm64_digest(self):
+        with tempfile.TemporaryDirectory() as temp:
+            apk, pin = self.fixture(Path(temp))
+            pin.update(repository='ttrroyy/RawlineMobile', tag='rawline-1.1.4', apks={
+                'armeabi-v7a': {'name': 'arm.apk', 'size': apk.stat().st_size, 'sha256': '0' * 64,
+                'url': 'https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/arm.apk'}})
+            with patch.object(build, 'load_pin', return_value=pin), patch.object(build.subprocess, 'run') as run:
+                with self.assertRaisesRegex(ValueError, 'SHA-256'):
+                    build.stage(SimpleNamespace(apk=apk, apksigner=Path('apksigner'), abi='armeabi-v7a'))
+                run.assert_not_called()
 
 
 class UpstreamMetadataTest(unittest.TestCase):

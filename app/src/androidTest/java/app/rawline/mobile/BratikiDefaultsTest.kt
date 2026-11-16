@@ -21,7 +21,9 @@ class BratikiDefaultsTest {
                 val store = SettingsStore({ db })
                 assertTrue(store.getBoolean(Key.PROXY_APPS, false))
                 assertFalse(store.getBoolean(Key.BYPASS_MODE, true))
-                assertEquals(setOf("org.telegram.messenger", "org.telegram.messenger.web", "com.google.android.youtube"),
+                val expected = setOf("org.telegram.messenger", "org.telegram.messenger.web", "com.google.android.youtube") +
+                    if (SagerNet.isTv) setOf("com.google.android.youtube.tv") else emptySet()
+                assertEquals(expected,
                     store.getString(Key.INDIVIDUAL).orEmpty().lines().toSet())
                 assertFalse(store.getBoolean(Key.ALLOW_BYPASS, true))
                 assertTrue(store.getBoolean("block_unowned_tun", false))

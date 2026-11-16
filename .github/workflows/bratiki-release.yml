@@ -12,6 +12,12 @@ on:
         required: true
         type: number
         default: 2
+      abi:
+        description: 'Expected ABI of the selected trusted build'
+        required: true
+        type: choice
+        options: [arm64-v8a, armeabi-v7a]
+        default: arm64-v8a
 permissions: {}
 concurrency:
   group: bratiki-release
@@ -31,6 +37,7 @@ jobs:
           RUN_ID: ${{ inputs.run_id }}
           REVISION: ${{ inputs.revision }}
           REPOSITORY: ${{ github.repository }}
+          EXPECTED_ABI: ${{ inputs.abi }}
         run: |
           python3 - <<'PY'
           import base64, hashlib, io, json, os, re, urllib.request, zipfile
@@ -39,6 +46,9 @@ jobs:
           assert repo == 'patchedronin/Rawline-Bratiki' and re.fullmatch(r'[0-9]+', run_id)
           revision = int(os.environ['REVISION'])
           assert 2 <= revision <= 998
+          abi = os.environ['EXPECTED_ABI']
+          assert abi in ('arm64-v8a', 'armeabi-v7a')
+          unsigned_name = f'unsigned-{abi}.apk'
           def api(path):
               request = urllib.request.Request('https://api.github.com/' + path, headers={
                   'Authorization': 'Bearer ' + os.environ['GH_TOKEN'], 'Accept': 'application/vnd.github+json',
@@ -74,14 +84,15 @@ jobs:
           if artifact.get('digest'):
               assert artifact['digest'] == 'sha256:' + hashlib.sha256(archive_data).hexdigest()
           with zipfile.ZipFile(io.BytesIO(archive_data)) as archive:
-              assert sorted(archive.namelist()) == ['build-metadata.json', 'unsigned-arm64-v8a.apk']
+              assert sorted(archive.namelist()) == ['build-metadata.json', unsigned_name]
               assert archive.getinfo('build-metadata.json').file_size < 65536
-              assert archive.getinfo('unsigned-arm64-v8a.apk').file_size < 600_000_000
+              assert archive.getinfo(unsigned_name).file_size < 600_000_000
               meta = json.loads(archive.read('build-metadata.json'))
-              unsigned = archive.read('unsigned-arm64-v8a.apk')
+              unsigned = archive.read(unsigned_name)
           assert meta['schema'] == 1 and meta['repository'] == repo and meta['sourceSha'] == sha
           assert str(meta['runId']) == run_id and int(meta['runAttempt']) == run['run_attempt']
           assert meta['revision'] == revision and meta['packageName'] == 'app.rawline.mobile'
+          assert meta['abi'] == abi
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', meta['versionName'])
           assert meta['signerSha256'] == 'b3729dc9e7538e42f95e96b8f61c400ad9f4e39d309b23c7e4594043fd0e134c'
           assert meta['unsignedSize'] == len(unsigned) and meta['unsignedSha256'] == hashlib.sha256(unsigned).hexdigest()
@@ -97,7 +108,7 @@ jobs:
           assert meta['minSdk'] == pin['minSdk'] == 24
           output = Path('validated')
           output.mkdir()
-          (output / 'unsigned-arm64-v8a.apk').write_bytes(unsigned)
+          (output / unsigned_name).write_bytes(unsigned)
           (output / 'build-metadata.json').write_text(json.dumps(meta, indent=2) + '\n')
           PY
       - uses: actions/upload-artifact@v7
@@ -128,6 +139,7 @@ jobs:
           REPOSITORY: ${{ github.repository }}
           EXPECTED_REVISION: ${{ inputs.revision }}
           SELECTED_RUN_ID: ${{ inputs.run_id }}
+          EXPECTED_ABI: ${{ inputs.abi }}
           SIGNING_KEYSTORE_B64: ${{ secrets.SIGNING_KEYSTORE_B64 }}
           SIGNING_STORE_PASSWORD: ${{ secrets.SIGNING_STORE_PASSWORD }}
           SIGNING_KEY_PASSWORD: ${{ secrets.SIGNING_KEY_PASSWORD }}
@@ -140,17 +152,20 @@ jobs:
           assert repo == 'patchedronin/Rawline-Bratiki'
           meta = json.loads(Path('validated/build-metadata.json').read_text())
           assert meta['repository'] == repo and str(meta['runId']) == os.environ['SELECTED_RUN_ID']
+          abi = os.environ['EXPECTED_ABI']
+          assert abi in ('arm64-v8a', 'armeabi-v7a') and meta['abi'] == abi
+          tv_preview = abi == 'armeabi-v7a'
           assert meta['revision'] == int(os.environ['EXPECTED_REVISION']) and 2 <= meta['revision'] <= 998
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', meta['versionName'])
           assert re.fullmatch(r'[a-f0-9]{40}', meta['sourceSha'])
           expected_signer = 'b3729dc9e7538e42f95e96b8f61c400ad9f4e39d309b23c7e4594043fd0e134c'
           assert meta['signerSha256'] == expected_signer
-          apk = Path('validated/unsigned-arm64-v8a.apk')
+          apk = Path(f'validated/unsigned-{abi}.apk')
           def sha256(path):
               with path.open('rb') as stream:
                   return hashlib.file_digest(stream, 'sha256').hexdigest()
           assert apk.stat().st_size == meta['unsignedSize'] and sha256(apk) == meta['unsignedSha256']
-          tag = 'rawline-' + meta['versionName'] + (f'+r{meta["revision"]}' if meta['revision'] > 2 else '')
+          tag = 'rawline-' + meta['versionName'] + (f'+r{meta["revision"]}' if meta['revision'] > 2 else '') + ('-tv' if tv_preview else '')
           def api(path, data=None, method=None, content_type='application/json'):
               payload = json.dumps(data).encode() if isinstance(data, dict) else data
               url = path if path.startswith('https://') else 'https://api.github.com/' + path
@@ -192,16 +207,20 @@ jobs:
               native = re.search(r'^native-code: (.+)$', badging, re.M)
               assert package and sdk and native
               assert package.groups() == ('app.rawline.mobile', str(meta['versionCode']), meta['versionName'])
-              assert int(sdk[1]) == meta['minSdk'] == 24 and native[1].strip() == "'arm64-v8a'"
+              assert int(sdk[1]) == meta['minSdk'] == 24 and native[1].strip() == f"'{abi}'"
               with zipfile.ZipFile(path) as archive:
                   libraries = [n for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')]
                   assert len(libraries) == len(set(libraries)) == 19
-                  assert 'lib/arm64-v8a/librawline.so' in libraries
-                  assert any(n.startswith('lib/arm64-v8a/') for n in archive.namelist())
-                  assert not any(n.startswith(('lib/armeabi-v7a/', 'lib/x86', 'lib/riscv')) for n in archive.namelist())
+                  assert f'lib/{abi}/librawline.so' in libraries
+                  assert all(n.startswith(f'lib/{abi}/') for n in libraries)
+                  elf_class, machine = (1, 40) if abi == 'armeabi-v7a' else (2, 183)
+                  for name in libraries:
+                      header = archive.read(name)[:20]
+                      assert header[:5] == b'\x7fELF' + bytes([elf_class]) and header[5] == 1
+                      assert int.from_bytes(header[18:20], 'little') == machine
           inspect(apk)
           assert subprocess.run([str(tools / 'apksigner'), 'verify', str(apk)], capture_output=True).returncode != 0
-          name = f'RawlineBratiki-{meta["versionName"]}-r{meta["revision"]}-arm64-v8a.apk'
+          name = f'RawlineBratiki-{meta["versionName"]}-r{meta["revision"]}-{abi}.apk'
           signed = Path(name)
           for key in ('SIGNING_KEYSTORE_B64', 'SIGNING_STORE_PASSWORD', 'SIGNING_KEY_PASSWORD', 'SIGNING_KEY_ALIAS'):
               assert os.environ.get(key), f'Missing release environment secret: {key}'
@@ -224,8 +243,8 @@ jobs:
           asset = {'name': name, 'size': signed.stat().st_size, 'sha256': sha256(signed)}
           manifest = {'schema': 1, 'packageName': 'app.rawline.mobile', 'channel': 'stable',
               'versionName': meta['versionName'], 'versionCode': meta['versionCode'], 'minSdk': meta['minSdk'],
-              'coreRef': meta['upstream']['coreRef'], 'signerSha256': expected_signer, 'assets': {'arm64-v8a': asset}}
-          body = (f'Rawline Bratiki {meta["versionName"]}, revision {meta["revision"]}.\n\n'
+              'coreRef': meta['upstream']['coreRef'], 'signerSha256': expected_signer, 'assets': {abi: asset}}
+          body = (f'Rawline Bratiki {meta["versionName"]}, revision {meta["revision"]}, ABI {abi}.\n\n'
               f'GPL source: https://github.com/{repo}/tree/{meta["sourceSha"]}\n'
               f'Source archive: https://github.com/{repo}/archive/{meta["sourceSha"]}.tar.gz\n'
               f'Upstream: {meta["upstream"]["repository"]} at {meta["upstream"]["commit"]}.\n'
@@ -235,7 +254,9 @@ jobs:
           # this workflow never replaces an asset or resumes a release with ambiguous provenance.
           # GitHub resolves the existing verified tag; do not request commit/tag creation during release creation.
           release = api(f'repos/{repo}/releases', {'tag_name': tag,
-              'name': f'Rawline Bratiki {meta["versionName"]}', 'body': body, 'draft': True, 'prerelease': False})
+              'name': f'Rawline Bratiki {meta["versionName"]}' + (' — TV ARM32 preview' if tv_preview else ''),
+              'body': body, 'draft': True, 'prerelease': tv_preview,
+              'make_latest': 'false' if tv_preview else 'true'})
           upload = release['upload_url'].split('{', 1)[0] + '?name=' + name
           uploaded = api(upload, signed.read_bytes(), content_type='application/vnd.android.package-archive')
           assert uploaded['name'] == name and uploaded['size'] == asset['size']

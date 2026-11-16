@@ -1,5 +1,28 @@
 # Build and release operation
 
+## ARM32 TV support (revision 5)
+
+Both unsigned build and isolated signing accept reviewed `abi` values
+`arm64-v8a` (default phone) and `armeabi-v7a` (32-bit TV). ARM32 donor is separately
+size/SHA/signature pinned in upstream.json. The build produces a fresh pinned
+multi-ABI core, packages only the requested split and verifies all 19 ELF headers.
+Artifact ABI is checked again against the explicit expected ABI before signing.
+No local unsigned APK upload can replace a trusted main workflow artifact.
+
+For TV use a new unused revision (5), pass `abi=armeabi-v7a` to both workflows,
+create the matching exact-source tag after the unsigned run succeeds, then have
+the owner approve environment `release`. Existing phone releases/assets are never
+overwritten. Each release manifest lists only its actual ABI; the updater can
+retain earlier releases for other ABIs. Test the TV APK before deploying it.
+
+The first ARM32 release uses tag `rawline-1.1.4+r5-tv` and is a **prerelease**, not
+GitHub latest: the existing stable phone r4 remains unchanged and is not offered
+an incompatible TV-only update. Promote a later reviewed revision only after
+real TV tests; never edit an already published artifact to change its role.
+
+The new-install preset includes `com.google.android.youtube.tv` only on Android TV
+(SagerNet.isTv). It does not migrate existing installations or embed credentials.
+
 ## Trust boundaries
 
 - `bratiki-build.yml`: runs only `main`, no signing secrets, contents read-only. Revision `2` produces 1.1.4 versionCode `110002`, above the existing local mod `110001`.
