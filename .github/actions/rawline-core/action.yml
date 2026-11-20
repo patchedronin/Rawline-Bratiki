@@ -1,8 +1,9 @@
 name: Build RawlineCore AAR
 description: >-
   Builds app/libs/RawlineCore.aar and generates app/src/main/assets/schema/sing-box.json (with the Android build tags)
-  from throneproj/Rawline at the THRONE_CORE_REF pinned in nb4a.properties. Both are cached on the resolved commit and
-  the core build script.
+  from throneproj/Rawline at the THRONE_CORE_REF pinned in nb4a.properties. The AAR contains arm64-v8a and armeabi-v7a
+  only: the Bratiki builds never package x86_64, and a stray x86_64 JNI library would otherwise leak into the universal
+  APK. Both outputs are cached on the resolved commit and the core build script.
 runs:
   using: composite
   steps:
@@ -97,7 +98,7 @@ runs:
         set -euo pipefail
         TAGS=$(sed -n 's/^TAGS="\(.*\)"$/\1/p' ../script/build_android.sh)
         test -n "$TAGS"
-        for ARCH in arm64 arm amd64; do
+        for ARCH in arm64 arm; do
           GOOS=android GOARCH="$ARCH" CGO_ENABLED=1 go list -mod=readonly -deps -tags "$TAGS" ./mobile > /dev/null
         done
     - name: Build RawlineCore AAR
@@ -105,7 +106,7 @@ runs:
       shell: bash
       working-directory: ${{ env.CORE_DIR }}
       run: |
-        sed -i -e 's/ThroneCore.aar/RawlineCore.aar/g' -e 's/-javapkg=io.throneproj/-javapkg=app.rawline.core/g' -e 's/-libname=throne/-libname=rawline/g' script/build_android.sh
+        sed -i -e 's/ThroneCore.aar/RawlineCore.aar/g' -e 's/-javapkg=io.throneproj/-javapkg=app.rawline.core/g' -e 's/-libname=throne/-libname=rawline/g' -e 's|^TARGET=.*|TARGET="android/arm64,android/arm"|' script/build_android.sh
         DEST="$GITHUB_WORKSPACE/app/libs" bash script/build_android.sh
     - name: TrustTunnel connection regression
       if: steps.cache.outputs.cache-hit != 'true'
@@ -151,7 +152,7 @@ runs:
         grep -q 'validateGeoFile(' "$RUNNER_TEMP/rawline-core-api.txt"
         grep -q 'go/Seq.class' "$RUNNER_TEMP/rawline-core-classes.txt"
         # the APK splits (buildSrc Helpers.kt) must match the core targets
-        for abi in arm64-v8a armeabi-v7a x86_64; do
+        for abi in arm64-v8a armeabi-v7a; do
           grep -q "jni/$abi/librawline.so" "$RUNNER_TEMP/rawline-core-aar.txt" \
             || { echo "::error::RawlineCore.aar has no jni/$abi/librawline.so"; exit 1; }
         done
