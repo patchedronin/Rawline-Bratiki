@@ -583,8 +583,10 @@
     <string name="vpn_ipv6">TUN IPv6</string>
     <string name="vpn_ipv6_sum">Give the tun an IPv6 address and route IPv6 through it</string>
     <string name="enable_tun_routing">Tun routing</string>
-    <string name="block_unowned_tun">Hide the tunnel from apps outside the VPN</string>
-    <string name="block_unowned_tun_sum">Apps outside the VPN cannot send traffic through tun0 to learn the server address. Hotspot sharing works with masquerading set to None. If the internet stops on your phone, turn it off.</string>
+    <string name="block_unowned_tun">tun0 protection</string>
+    <string name="block_unowned_tun_sum">Blocks TCP connections from the tunnel address when the owning app cannot be identified. UDP/QUIC, ICMP/ping and VPN sharing without masquerading are not checked. Use VPN Hotspot with masquerading set to None. Does not provide strict app isolation.</string>
+    <string name="block_unowned_tun_strict">Extended tun0 protection</string>
+    <string name="block_unowned_tun_strict_sum">Strictly checks traffic whose owning app cannot be identified: UDP, including QUIC and DNS over UDP, ICMP/ping and VPN sharing, including forwarded TCP. This can interrupt those connections. UDP owners are cached for 10 seconds. Available only while tun0 protection is on. Restart the VPN to apply changes.</string>
     <string name="enable_tun_routing_sum">Keep the direct IP rules of the route profile outside the tun</string>
     <string name="block_quic">Block QUIC</string>
     <string name="block_quic_sum">Refuse QUIC (UDP 443) sent through a proxy so browsers switch to TCP at once. Direct traffic is not affected</string>
@@ -605,7 +607,7 @@
     <string name="auto_update_interval">Update interval</string>
     <string name="auto_update_interval_sum">%d minutes</string>
     <string name="auto_update_interval_invalid">Enter at least %d minutes</string>
-    <string name="dns_address_dialog_message">Examples: https://8.8.8.8/dns-query, tls://1.1.1.1, 8.8.8.8, localhost</string>
+    <string name="dns_address_dialog_message">Enter one server, or several separated by commas. The first successful answer is used. Examples: https://8.8.8.8/dns-query, tls://1.1.1.1</string>
     <string name="remote_dns_disable_ipv6">Remote DNS: disable IPv6</string>
     <string name="direct_dns_disable_ipv6">Direct DNS: disable IPv6</string>
     <string name="dns_disable_ipv6_sum">Answer AAAA queries sent to this server with an empty result</string>
@@ -2820,6 +2822,11 @@
     <string name="sniff_route_only_sum">Use the sniffed SNI or host only to pick the route, without replacing the connection address. Keep it on unless the server has to route by domain, for example in a cascade</string>
     <string name="http_proxy_auth">HTTP proxy authentication</string>
     <string name="http_proxy_auth_sum">Protect the HTTP proxy with the same login and password. Applies only while access from other devices is on</string>
+    <string name="tun_stack">TCP/IP stack</string>
+    <string name="tun_stack_auto">Auto (core default)</string>
+    <string name="tun_stack_summary">Auto keeps the current core default. Reconnect to apply changes.</string>
+    <string name="xray_geo_auto_update">Update geodata automatically</string>
+    <string name="xray_geo_auto_update_sum">Check daily and download geoip.dat and geosite.dat when they are more than a day old. If a download fails, keep the previous files.</string>
     <string name="qmobile_theme_file">Theme from file</string>
     <string name="qmobile_theme_file_summary">A JSON palette applied without rebuilding the app</string>
     <string name="qmobile_theme_reset">Restore the built-in theme</string>

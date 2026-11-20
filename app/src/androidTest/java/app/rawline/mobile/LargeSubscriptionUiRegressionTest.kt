@@ -1,6 +1,5 @@
 package app.rawline.mobile
 
-import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
 import android.os.Handler
@@ -12,6 +11,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import app.rawline.mobile.database.ProxyEntity
 import app.rawline.mobile.database.DataStore
+import app.rawline.mobile.database.GroupRepo
 import app.rawline.mobile.database.ProxyGroup
 import app.rawline.mobile.database.SagerDatabase
 import app.rawline.mobile.outbound.types.Socks
@@ -24,7 +24,7 @@ import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
-/** Reproduces the 2,200-server collapsed subscription from the reported ANR without network traffic. */
+/** Keeps a 2,200-server subscription bounded and responsive without network traffic. */
 @RunWith(AndroidJUnit4::class)
 class LargeSubscriptionUiRegressionTest {
     private val instrumentation = InstrumentationRegistry.getInstrumentation()
@@ -50,11 +50,9 @@ class LargeSubscriptionUiRegressionTest {
         finally { bitmap.recycle() }
     }
 
-    @Test fun collapsedAndExpandedLargeSubscriptionsKeepTheUiBoundedAndResponsive() {
+    @Test fun focusedLargeSubscriptionKeepsTheUiBoundedAndResponsive() {
         val previousMode=DataStore.mobileListMode
         DataStore.mobileListMode="list"
-        val dashboard = context.getSharedPreferences("dashboard", Context.MODE_PRIVATE)
-        val previousCollapsed = dashboard.getStringSet("collapsedGroups", emptySet()).orEmpty().toSet()
         val group = ProxyGroup(name = "Large subscription regression", url = "https://example.invalid/subscription")
         group.id = SagerDatabase.groupDao.insert(group)
         val profiles = (1..2200).map { index ->
@@ -63,7 +61,8 @@ class LargeSubscriptionUiRegressionTest {
             })
         }
         val ids = SagerDatabase.proxyDao.insert(profiles)
-        dashboard.edit().putStringSet("collapsedGroups", previousCollapsed + group.id.toString()).commit()
+        val previousGroup = GroupRepo.currentId()
+        GroupRepo.setCurrent(group.id)
         var activity: MainActivity? = null
         try {
             val launched = instrumentation.startActivitySync(Intent(context, MainActivity::class.java)
@@ -71,13 +70,6 @@ class LargeSubscriptionUiRegressionTest {
             activity = launched
             fun texts() = descendants(launched.window.decorView).filterIsInstance<TextView>()
             fun fixtureRows() = texts().filter { it.text.toString().startsWith("large-sub-fixture-") }
-            await { ui { texts().any { it.text.toString() == group.name } } }
-            ui { assertTrue("Collapsed subscriptions must not inflate their server rows", fixtureRows().isEmpty()) }
-            screenshot("large-subscription-collapsed.png")
-            ui {
-                val title = texts().first { it.text.toString() == group.name }
-                assertTrue((title.parent.parent as View).performClick())
-            }
             await { ui { fixtureRows().isNotEmpty() } }
             ui { assertTrue("Expanded groups must bound the number of inflated server rows", fixtureRows().size <= 101) }
             screenshot("large-subscription-expanded.png")
@@ -96,8 +88,8 @@ class LargeSubscriptionUiRegressionTest {
         } finally {
             activity?.let { ui { it.finish() } }
             DataStore.mobileListMode=previousMode
+            GroupRepo.setCurrent(previousGroup)
             SagerDatabase.groupDao.deleteById(group.id)
-            dashboard.edit().putStringSet("collapsedGroups", previousCollapsed).commit()
         }
     }
 }

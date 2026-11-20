@@ -86,11 +86,7 @@ class SagerNet : Application(),
         }
 
         if (isMainProcess) {
-            // The tun0 guard drops every connection on firmware that never names connection owners: off for everyone once.
-            if (!DataStore.configurationStore.getBoolean("block_unowned_tun_112_migrated", false)) {
-                DataStore.blockUnownedTun = false
-                DataStore.configurationStore.putBoolean("block_unowned_tun_112_migrated", true)
-            }
+            DataStore.migrateTunProtectionModes()
             if (!DataStore.configurationStore.getBoolean("mobile_gray_300_color_migrated", false)) {
                 DataStore.appTheme = app.rawline.mobile.utils.Theme.GREY
                 DataStore.useSystemTheme = false
@@ -128,6 +124,7 @@ class SagerNet : Application(),
             runOnDefaultDispatcher { File(filesDir, "custom_icon").deleteRecursively() }
             RemoteRouteUpdater.schedule()
             SubscriptionScheduler.schedule()
+            app.rawline.mobile.update.GeoAssetScheduler.start()
             Widgets.watchSelection(this)
             app.rawline.mobile.route.ProviderGeoAssets.listen()
         }

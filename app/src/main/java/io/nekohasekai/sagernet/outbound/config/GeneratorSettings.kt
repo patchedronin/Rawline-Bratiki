@@ -45,6 +45,7 @@ data class GeneratorSettings(
     val vpnMode: Boolean = false,
     /** vpn_mtu (SettingsRepo.h:236). */
     val tunMtu: Int = 1500,
+    val tunStack: String = "",
     /** vpn_strict_route (SettingsRepo.h:222-231); always true on Android (no setting). */
     val tunStrictRoute: Boolean = true,
     /** vpn_tun_ipv4_cidr (SettingsRepo.h:240). */
@@ -122,7 +123,8 @@ data class GeneratorSettings(
     val enableDnsRouting: Boolean = true,
     /** enable_tun_routing (SettingsRepo.h:222): the route profile's direct ip_cidr values bypass the tun. */
     val enableTunRouting: Boolean = false,
-    val blockUnownedTun: Boolean = false,
+    val blockUnownedTun: Boolean = true,
+    val blockUnownedTunStrict: Boolean = false,
     /** block_quic (SettingsRepo.h): QUIC (UDP 443) headed for a proxy is refused so browsers fall back to TCP. */
     val blockQuic: Boolean = true,
     /** Off: the sniffed domain replaces the destination, so the server gets the domain instead of the IP. */

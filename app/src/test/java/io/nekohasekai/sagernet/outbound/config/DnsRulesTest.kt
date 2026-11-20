@@ -11,6 +11,15 @@ import org.junit.Assert.*
 import org.junit.Test
 
 class DnsRulesTest {
+    @Test fun pickerReplacesOnlyRuleSetsAndKeepsSitesAndUrls() {
+        val selected = listOf("geosite-category-ai-chat-!cn", "https://example.org/custom.srs", "geosite-category-ai-chat-!cn")
+        val sites = DnsRules.withRuleSets(listOf("full:example.com", "geosite:old", "rule-set:previous"), selected)
+        assertEquals(listOf("full:example.com", "rule-set:geosite-category-ai-chat-!cn", "rule-set:https://example.org/custom.srs"), sites)
+        assertEquals(selected.distinct(), DnsRules.parse(sites).ruleSets)
+        assertEquals("", DnsRule(sites = sites, server = "1.1.1.1").problem())
+        assertEquals(listOf("full:example.com"), DnsRules.withRuleSets(sites, emptyList()))
+    }
+
     private val twitch = DnsRule(sites = listOf("geosite:category-ai-chat-!cn", "domain:usher.ttvnw.net", "full:gql.twitch.tv",
         "keyword:openai", "regexp:^chat[0-9]+\\.example\\.org$", "example.com"), server = "https://dns.zapret.moe/dns-query")
 
@@ -71,6 +80,18 @@ class DnsRulesTest {
         )), RuleSetCatalog(emptyList()))
         val tags = config.obj("dns").array("servers").filterIsInstance<JsonObject>().map { it.string("tag") }
         assertTrue(tags.none { it.startsWith("dns-user") })
+    }
+
+    @Test fun customRuleSetUrlIsRegisteredAndUsesItsOwnDnsServer() {
+        val url = "https://example.org/custom.srs"
+        val config = build(GeneratorSettings(dnsRules = listOf(
+            DnsRule(sites = listOf("rule-set:$url"), server = "1.1.1.1"),
+        )), RuleSetCatalog(emptyList()))
+        val set = config.obj("route").array("rule_set").filterIsInstance<JsonObject>().single()
+        assertEquals(url, set.string("url"))
+        val rules = config.obj("dns").array("rules").filterIsInstance<JsonObject>()
+        assertTrue(rules.any { it.string("server") == "dns-user-0" &&
+            (it["rule_set"] as? JsonArray)?.strings() == listOf(set.string("tag")) })
     }
 
     @Test fun xrayResolvesTheRuleServerOverHttps() {

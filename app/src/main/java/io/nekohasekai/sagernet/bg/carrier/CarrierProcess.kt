@@ -121,7 +121,7 @@ class CarrierProcess private constructor(private val process: Process, private v
             launch: (ProcessBuilder) -> Process = { it.start() },
         ): CarrierProcess {
             val hashes=app.rawline.mobile.outbound.json.JsonInput.parseObject(privateJson).array("hashes").size
-            val attempts=if(kind==CarrierKind.QWDTT) hashes.coerceIn(1,4) else 1
+            val attempts=if(kind==CarrierKind.QWDTT) hashes.coerceIn(1,app.rawline.mobile.outbound.types.Qwdtt.MAX_HASHES) else 1
             val deadline=System.nanoTime()+NativeSessionPolicy.startupTimeoutMs(kind,timeoutMs)*1_000_000
             var attempt=0
             var retries=0
@@ -251,6 +251,19 @@ class CarrierProcess private constructor(private val process: Process, private v
                                 } }
                             }
                         }
+                        if (kind == CarrierKind.QWDTT) {
+                            val context = runCatching { app.rawline.mobile.ktx.app }.getOrNull()
+                            running.wdttLifecycle = context?.let { WdttPlusLifecycle(it) { event ->
+                                val command = when (event) {
+                                    "DEVICE_SLEEP" -> "SCREEN_OFF"
+                                    "DEVICE_WAKE" -> "SCREEN_ON"
+                                    else -> null
+                                }
+                                if (command != null) synchronized(child) { runCatching {
+                                    child.outputStream.write((command+'\n').toByteArray(Charsets.UTF_8)); child.outputStream.flush()
+                                } }
+                            } }
+                        }
                         if (kind == CarrierKind.FREETURN || kind == CarrierKind.FREETURN_TCP) {
                             val send = { command: String -> synchronized(child) { runCatching { child.outputStream.write((command+'\n').toByteArray(Charsets.UTF_8)); child.outputStream.flush() } }; Unit }
                             // The original's "operator DNS": without own servers the network's resolvers answer what the operator lets through.
@@ -272,7 +285,9 @@ class CarrierProcess private constructor(private val process: Process, private v
                                 if (totalWorkers > 0) running.health.activeWorkers()?.let { runCatching { onWorkers(it.coerceAtMost(totalWorkers), totalWorkers) } }
                                 running.captcha.accept(line)
                                 if(NativeSessionPolicy.unavailableCall(line)) running.unavailableCall.set(true)
-                                NativeSessionPolicy.startupFailure(line)?.let { running.startupFailure.compareAndSet(null,it) }
+                                NativeSessionPolicy.startupFailure(line)?.let(redactor::redact)?.let {
+                                    running.startupFailure.compareAndSet(null, it)
+                                }
                                 redactor.redact(line)?.let { safe -> moe.matsuri.nb4a.utils.CoreLog.write("[Info] [${kind.name}] $safe") }
                             }
                         } }.also { running.captcha.close() } }, "Rawline-carrier-output").apply { isDaemon = true; start() }
@@ -292,13 +307,13 @@ class CarrierProcess private constructor(private val process: Process, private v
                                 deadline+=paused;interactionBudget-=paused
                             }
                             lastWaitTick=now
-                            val exited = try { child.exitValue(); true } catch (_: IllegalThreadStateException) { false }
-                            if(exited) {
+                            val exitCode = try { child.exitValue() } catch (_: IllegalThreadStateException) { null }
+                            if (exitCode != null) {
                                 outputReader.join(200)
                                 running.startupFailure.get()?.let { throw IllegalStateException(it) }
                                 if(kind==CarrierKind.QWDTT && running.unavailableCall.get()) throw UnavailableCall()
                                 if(kind in listOf(CarrierKind.QWDTT,CarrierKind.CSQTT,CarrierKind.MRTT) && running.health.transientFailure) throw TransientStartup()
-                                error(running.startupFailure.get() ?: "Transport client stopped before becoming ready")
+                                error(running.startupFailure.get() ?: "${kind.name} stopped before becoming ready (exit code $exitCode)")
                             }
                             if (socksReady(socksPort, bridgeCredentials)) {
                                 moe.matsuri.nb4a.utils.CoreLog.write("[Info] [${kind.name}] Native transport ready")

@@ -28,7 +28,6 @@ class Mrtt:Qwdtt() {
     var srtpMode="auto"
     var fingerprint="firefox"
     var clientIds="8202606,6287487"
-    var customTurnIps=""
     var mtu=1280
     init { type="mrtt";serverPort=46000;workers=18;turnTcp=false;obfs="unified" }
     override fun displayType()="MRTT ("+when(transport) { "max" -> "MAX";"jitsi" -> "Jitsi";else -> "VK" }+")"
@@ -126,7 +125,7 @@ class Mrtt:Qwdtt() {
         private val MAX_GROUP=Regex("^-?[0-9]{1,64}$")
         private val key by lazy { SecretKeySpec(MessageDigest.getInstance("SHA-256").digest("mrtt-chiper-key".toByteArray()),"AES") }
         fun maxWorkers(hashCount:Int,anyCount:Boolean)=if(anyCount) MAX_WORKERS/WORKERS_PER_GROUP*WORKERS_PER_GROUP
-            else hashCount.coerceIn(1,MAX_HASHES)*GROUPS_PER_HASH*WORKERS_PER_GROUP
+            else minOf(MAX_WORKERS,hashCount.coerceIn(1,MAX_HASHES)*GROUPS_PER_HASH*WORKERS_PER_GROUP)
         fun normalizeWorkers(requested:Int,hashCount:Int,anyCount:Boolean)=
             requested.coerceIn(WORKERS_PER_GROUP,maxWorkers(hashCount,anyCount))/WORKERS_PER_GROUP*WORKERS_PER_GROUP
         fun validJitsiRoom(value:String)=JITSI_ROOM.matches(value)

@@ -28,6 +28,36 @@ class DnsAddressParse(@JvmField val address: DnsAddress?, @JvmField val why: Str
 /** The desktop's DNS address syntax (ParseDnsAddress and buildDnsObj, generate.cpp) and the DoH upgrade table. */
 object DnsServers {
 
+    @JvmStatic
+    fun splitAddresses(text: String): List<String> {
+        val result = mutableListOf<String>()
+        var current = ""
+        for (part in text.split(',')) {
+            // Keep compact resolver lists working when a suffix could also be a DNS address.
+            val keepPathComma = current.trimStart().substringBefore("://").lowercase() in PATH_SCHEMES &&
+                '/' in current.substringAfter("://", "") && part.isNotEmpty() &&
+                part == part.trimStart() && !DNS_SCHEME_PREFIX.containsMatchIn(part) &&
+                parseDnsAddress(part).address == null
+            if (keepPathComma) current += ",$part"
+            else {
+                current.trim().takeIf(String::isNotEmpty)?.let(result::add)
+                current = part
+            }
+        }
+        current.trim().takeIf(String::isNotEmpty)?.let(result::add)
+        return result.distinct()
+    }
+    private val DNS_SCHEME_PREFIX = Regex("^[A-Za-z][A-Za-z0-9+.-]*://")
+
+    @JvmStatic
+    fun addressListProblem(text: String): String {
+        val addresses = splitAddresses(text)
+        if (addresses.isEmpty()) return parseDnsAddress("").why
+        return addresses.firstNotNullOfOrNull { address ->
+            parseDnsAddress(address).why.takeIf(String::isNotEmpty)?.let { "$address: $it" }
+        } ?: ""
+    }
+
     private val IFACE = Regex("^[^\\s/]+$")
     private val IPV4_LIKE = Regex("^[0-9.]+$")
     private val HOSTNAME = Regex(
