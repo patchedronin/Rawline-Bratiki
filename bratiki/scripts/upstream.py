@@ -80,7 +80,8 @@ def git(*args, cwd=ROOT, binary=False, env=None):
 
 
 def protected(name):
-    return name in ("README.md", ".gitignore") or name.startswith("bratiki/") or name.startswith(".github/workflows/")
+    return (name in ("README.md", ".gitignore") or name.startswith("bratiki/")
+            or name.startswith(".github/workflows/") or name.startswith(".github/actions/"))
 
 
 def metadata(item, tree, commit):
@@ -161,7 +162,8 @@ def prepare(item, publish):
         # Pin source metadata from pristine upstream, never from a patch-modified properties file.
         require(metadata(item, tree, upstream_sha) == updated, "Custom patch altered upstream version/core metadata")
         patch = git("diff", "--binary", "--full-index", upstream_sha, "--", ".", ":(exclude)bratiki/**",
-                    ":(exclude).github/workflows/**", ":(exclude)README.md", ":(exclude).gitignore", cwd=tree, binary=True)
+                    ":(exclude).github/workflows/**", ":(exclude).github/actions/**",
+                    ":(exclude)README.md", ":(exclude).gitignore", cwd=tree, binary=True)
         require(patch, "Custom patch disappeared during migration")
         # Remove every upstream workflow, then restore only the reviewed Bratiki workflow set.
         shutil.rmtree(tree / ".github/workflows", ignore_errors=True)

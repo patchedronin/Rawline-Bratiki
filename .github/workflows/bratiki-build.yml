@@ -24,7 +24,9 @@ concurrency:
   cancel-in-progress: false
 jobs:
   build:
-    if: github.ref == 'refs/heads/main' && github.repository == 'patchedronin/Rawline-Bratiki'
+    if: >-
+      github.repository == 'patchedronin/Rawline-Bratiki' &&
+      (github.ref == 'refs/heads/main' || github.event_name == 'workflow_dispatch')
     runs-on: ubuntu-24.04
     timeout-minutes: 150
     env:

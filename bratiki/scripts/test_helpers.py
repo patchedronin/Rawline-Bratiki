@@ -184,7 +184,8 @@ class UpstreamMetadataTest(unittest.TestCase):
                     upstream.metadata(item, root, "c" * 40)
 
     def test_protected_overrides_are_not_part_of_regenerated_patch(self):
-        for name in ("README.md", ".gitignore", "bratiki/custom.patch", ".github/workflows/release.yml"):
+        for name in ("README.md", ".gitignore", "bratiki/custom.patch", ".github/workflows/release.yml",
+                     ".github/actions/rawline-core/action.yml"):
             self.assertTrue(upstream.protected(name))
         self.assertFalse(upstream.protected("app/src/main/example.kt"))
 
