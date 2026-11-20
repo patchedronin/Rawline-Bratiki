@@ -60,24 +60,27 @@ def selected_apk(pin, abi):
     return apk
 
 
-def stage(args):
-    pin = load_pin()
-    abi = getattr(args, "abi", "arm64-v8a")
+def download_apk(apk_pin, abi):
+    folder = Path(os.environ.get("RUNNER_TEMP", str(ROOT / ".gradle")))
+    folder.mkdir(parents=True, exist_ok=True)
+    apk = folder / f"bratiki-upstream-{abi}.apk"
+    request = urllib.request.Request(apk_pin["url"], headers={"User-Agent": "Rawline-Bratiki-build"})
+    with urllib.request.urlopen(request, timeout=180) as response, apk.open("wb") as output:
+        shutil.copyfileobj(response, output)
+    return apk
+
+
+def stage_abi(pin, abi, apk, apksigner, copy_shared=True):
     apk_pin = selected_apk(pin, abi)
-    apk = args.apk
-    if not apk:
-        apk = Path(os.environ.get("RUNNER_TEMP", str(ROOT / ".gradle"))) / "bratiki-upstream.apk"
-        apk.parent.mkdir(parents=True, exist_ok=True)
-        request = urllib.request.Request(apk_pin["url"], headers={"User-Agent": "Rawline-Bratiki-build"})
-        with urllib.request.urlopen(request, timeout=180) as response, apk.open("wb") as output:
-            shutil.copyfileobj(response, output)
-    require(apk.stat().st_size == apk_pin["size"], "Upstream APK size mismatch")
-    require(digest(apk) == apk_pin["sha256"], "Upstream APK SHA-256 mismatch")
-    result = subprocess.run([str(args.apksigner), "verify", "--verbose", "--print-certs", str(apk)],
+    require(apk.stat().st_size == apk_pin["size"], f"Upstream {abi} APK size mismatch")
+    require(digest(apk) == apk_pin["sha256"], f"Upstream {abi} APK SHA-256 mismatch")
+    result = subprocess.run([str(apksigner), "verify", "--verbose", "--print-certs", str(apk)],
                             text=True, check=True, capture_output=True).stdout
     certs = re.findall(r"Signer #\d+ certificate SHA-256 digest: ([a-fA-F0-9]+)", result)
-    require(len(certs) == 1 and certs[0].lower() == pin["signerSha256"], "Upstream signer mismatch")
-    counts = {key: 0 for key in ("carriers", "carrier-licenses", "routeprofiles", "sb-dashboard", "schema")}
+    require(len(certs) == 1 and certs[0].lower() == pin["signerSha256"], f"Upstream {abi} signer mismatch")
+    carriers = 0
+    licenses = 0
+    copied = []
     with zipfile.ZipFile(apk) as archive:
         require(len(archive.namelist()) == len(set(archive.namelist())), "Duplicate APK entries")
         for entry in archive.infolist():
@@ -87,59 +90,100 @@ def stage(args):
             if entry.is_dir():
                 continue
             destination = None
-            group = None
             if entry.filename.startswith(f"lib/{abi}/") and name.suffix == ".so" and name.name != "librawline.so":
                 require(len(name.parts) == 3, "Unexpected native library path")
                 destination = ROOT / "deployment/carriers" / abi / name.name
-                group = "carriers"
-            elif len(name.parts) > 2 and name.parts[0] == "assets" and name.parts[1] in counts:
-                group = name.parts[1]
-                if group == "carrier-licenses" and len(name.parts) > 3 and name.parts[2] != abi:
+                carriers += 1
+            elif len(name.parts) > 2 and name.parts[0] == "assets" and name.parts[1] in (
+                    "carrier-licenses", "routeprofiles", "sb-dashboard", "schema"):
+                if name.parts[1] == "carrier-licenses":
+                    if len(name.parts) > 3 and name.parts[2] != abi:
+                        continue
+                    licenses += 1
+                elif not copy_shared:
                     continue
                 destination = ROOT / "app/src/main" / str(name)
             if destination:
                 destination.parent.mkdir(parents=True, exist_ok=True)
                 with archive.open(entry) as source, destination.open("wb") as target:
                     shutil.copyfileobj(source, target)
-                counts[group] += 1
-    require(all(counts.values()), f"Upstream APK lacks required runtime data: {counts}")
-    require(counts["carriers"] == EXPECTED_NATIVE_LIBRARIES - 1,
-            "Upstream carrier set changed; review native library completeness before migrating")
+                copied.append(str(name))
+    require(carriers == EXPECTED_NATIVE_LIBRARIES - 1,
+            f"Upstream {abi} carrier set changed; review native library completeness before migrating")
+    require(licenses > 0, f"Upstream {abi} APK lacks carrier licenses")
+    return {"carriers": carriers, "carrier-licenses": licenses, "files": len(copied)}
+
+
+def stage(args):
+    pin = load_pin()
+    abi = getattr(args, "abi", "arm64-v8a")
+    if abi == "universal":
+        require(args.apk is None, "Universal staging downloads both reviewed ABI APKs; --apk is single-ABI only")
+        targets = ABIS
+    else:
+        targets = (abi,)
+    summary = {}
+    for target in targets:
+        apk = args.apk
+        if not apk:
+            apk = download_apk(selected_apk(pin, target), target)
+        summary[target] = stage_abi(pin, target, apk, args.apksigner,
+                                    copy_shared=(target == "arm64-v8a" or abi != "universal"))
     require((ROOT / "app/src/main/assets/sb-dashboard/index.html").is_file(), "Dashboard index missing")
     require((ROOT / "app/src/main/assets/routeprofiles/srslist.h").is_file(), "Route catalog missing")
     require((ROOT / "app/src/main/assets/schema/sing-box.json").is_file(), "Schema missing")
-    print(json.dumps(counts, sort_keys=True))
+    print(json.dumps(summary, sort_keys=True))
 
 
 def package(args):
     pin = load_pin()
     abi = args.abi
-    selected_apk(pin, abi)
+    if abi == "universal":
+        for target in ABIS:
+            selected_apk(pin, target)
+        pattern = "*universal*unsigned.apk"
+        expected_abis = ABIS
+    else:
+        selected_apk(pin, abi)
+        pattern = f"*{abi}*unsigned.apk"
+        expected_abis = (abi,)
     require(2 <= args.revision <= 998, "Revision must be 2..998")
-    candidates = list((ROOT / "app/build/outputs/apk/oss/release").glob(f"*{abi}*unsigned.apk"))
-    require(len(candidates) == 1, "Expected exactly one unsigned selected-ABI APK")
+    candidates = list((ROOT / "app/build/outputs/apk/oss/release").glob(pattern))
+    require(len(candidates) == 1, f"Expected exactly one unsigned {abi} APK")
     apk = candidates[0]
     verify = subprocess.run([str(args.apksigner), "verify", str(apk)], capture_output=True)
     require(verify.returncode != 0, "Build was unexpectedly signed")
     badging = subprocess.check_output([str(args.aapt2), "dump", "badging", str(apk)], text=True)
     version_code = pin["versionIndex"] * 1000 + args.revision
-    for text in ("name='app.rawline.mobile'", f"versionCode='{version_code}'", f"versionName='{pin['versionName']}'",
-                  f"native-code: '{abi}'"):
+    for text in ("name='app.rawline.mobile'", f"versionCode='{version_code}'",
+                 f"versionName='{pin['versionName']}'"):
         require(text in badging, f"APK metadata mismatch: {text}")
+    native_match = re.search(r"^native-code: (.+)$", badging, re.M)
+    require(native_match is not None, "APK has no native-code")
+    native_abis = set(re.findall(r"'([^']+)'", native_match[1]))
+    require(native_abis == set(expected_abis), f"APK ABI set mismatch: {sorted(native_abis)}")
     sdk = re.search(r"^(?:minSdkVersion|sdkVersion):'([0-9]+)'", badging, re.M)
     require(sdk is not None and int(sdk[1]) == pin["minSdk"], "APK minimum SDK mismatch")
     with zipfile.ZipFile(apk) as archive:
         native = [name for name in archive.namelist() if name.startswith("lib/") and name.endswith(".so")]
-        require(len(native) == EXPECTED_NATIVE_LIBRARIES and len(set(native)) == len(native),
+        require(len(native) == EXPECTED_NATIVE_LIBRARIES * len(expected_abis)
+                and len(set(native)) == len(native),
                 "APK lacks the complete reviewed native carrier set")
-        require(all(name.startswith(f"lib/{abi}/") for name in native), "APK contains another ABI")
-        require(f"lib/{abi}/librawline.so" in native, "APK lacks freshly built RawlineCore")
-        machine = 40 if abi == "armeabi-v7a" else 183
-        elf_class = 1 if abi == "armeabi-v7a" else 2
+        per_abi = {target: 0 for target in expected_abis}
         for name in native:
+            parts = name.split("/")
+            require(len(parts) == 3 and parts[0] == "lib" and parts[1] in expected_abis,
+                    "APK contains an unexpected ABI")
+            per_abi[parts[1]] += 1
+            machine = 40 if parts[1] == "armeabi-v7a" else 183
+            elf_class = 1 if parts[1] == "armeabi-v7a" else 2
             header = archive.read(name)[:20]
             require(header[:5] == b'\x7fELF' + bytes([elf_class]) and header[5] == 1
                     and int.from_bytes(header[18:20], 'little') == machine, "Wrong ELF architecture")
+        for target in expected_abis:
+            require(per_abi[target] == EXPECTED_NATIVE_LIBRARIES,
+                    f"APK lacks the complete {target} library set")
+            require(f"lib/{target}/librawline.so" in native, f"APK lacks freshly built {target} RawlineCore")
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     require(os.environ.get("GITHUB_SHA", source) == source, "Checkout is not workflow source SHA")
     args.output.mkdir(parents=True, exist_ok=True)
@@ -152,6 +196,8 @@ def package(args):
                 "versionCode": version_code, "revision": args.revision, "minSdk": pin["minSdk"],
                  "signerSha256": SIGNER, "abi": abi,
                  "unsignedSize": target.stat().st_size, "unsignedSha256": digest(target)}
+    if abi == "universal":
+        metadata.update(abis=list(ABIS), nativeLibraries=len(native))
     (args.output / "build-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
@@ -161,11 +207,11 @@ def main():
     staging = sub.add_parser("stage")
     staging.add_argument("--apk", type=Path, help="Use a local upstream APK; all pin checks still apply")
     staging.add_argument("--apksigner", required=True, type=Path)
-    staging.add_argument("--abi", choices=ABIS, default="arm64-v8a")
+    staging.add_argument("--abi", choices=(*ABIS, "universal"), default="arm64-v8a")
     staging.set_defaults(handler=stage)
     packaging = sub.add_parser("package")
     packaging.add_argument("--revision", required=True, type=int)
-    packaging.add_argument("--abi", choices=ABIS, default="arm64-v8a")
+    packaging.add_argument("--abi", choices=(*ABIS, "universal"), default="arm64-v8a")
     packaging.add_argument("--apksigner", required=True, type=Path)
     packaging.add_argument("--aapt2", required=True, type=Path)
     packaging.add_argument("--output", type=Path, default=ROOT / "bratiki-dist")

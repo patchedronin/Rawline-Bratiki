@@ -34,6 +34,8 @@ class WorkflowContractTest(unittest.TestCase):
         self.assertIn('environment: release', source)
         self.assertNotIn('actions/checkout', source)
         self.assertIn("meta['abi'] == abi", source)
+        self.assertIn("19 * len(expected_abis)", source)
+        self.assertIn("assets = {target: asset for target in expected_abis}", source)
         self.assertIn("header[:5] == b'\\x7fELF'", source)
         self.assertIn("expected_signer", source)
 
@@ -93,6 +95,9 @@ class WorkflowContractTest(unittest.TestCase):
 
     def test_arm32_trusted_artifact_passes(self):
         self.validate()
+
+    def test_universal_trusted_artifact_passes(self):
+        self.validate('universal', 'universal')
 
     def test_arm64_trusted_artifact_still_passes(self):
         self.validate('arm64-v8a', 'arm64-v8a')

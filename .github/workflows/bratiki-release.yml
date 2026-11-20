@@ -13,11 +13,11 @@ on:
         type: number
         default: 2
       abi:
-        description: 'Expected ABI of the selected trusted build'
+        description: 'Expected target of the selected trusted build'
         required: true
         type: choice
-        options: [arm64-v8a, armeabi-v7a]
-        default: arm64-v8a
+        options: [universal, arm64-v8a, armeabi-v7a]
+        default: universal
 permissions: {}
 concurrency:
   group: bratiki-release
@@ -47,7 +47,7 @@ jobs:
           revision = int(os.environ['REVISION'])
           assert 2 <= revision <= 998
           abi = os.environ['EXPECTED_ABI']
-          assert abi in ('arm64-v8a', 'armeabi-v7a')
+          assert abi in ('universal', 'arm64-v8a', 'armeabi-v7a')
           unsigned_name = f'unsigned-{abi}.apk'
           def api(path):
               request = urllib.request.Request('https://api.github.com/' + path, headers={
@@ -153,8 +153,10 @@ jobs:
           meta = json.loads(Path('validated/build-metadata.json').read_text())
           assert meta['repository'] == repo and str(meta['runId']) == os.environ['SELECTED_RUN_ID']
           abi = os.environ['EXPECTED_ABI']
-          assert abi in ('arm64-v8a', 'armeabi-v7a') and meta['abi'] == abi
+          assert abi in ('universal', 'arm64-v8a', 'armeabi-v7a') and meta['abi'] == abi
           tv_preview = abi == 'armeabi-v7a'
+          universal = abi == 'universal'
+          expected_abis = ('arm64-v8a', 'armeabi-v7a') if universal else (abi,)
           assert meta['revision'] == int(os.environ['EXPECTED_REVISION']) and 2 <= meta['revision'] <= 998
           assert re.fullmatch(r'[0-9]+\.[0-9]+\.[0-9]+', meta['versionName'])
           assert re.fullmatch(r'[a-f0-9]{40}', meta['sourceSha'])
@@ -207,17 +209,19 @@ jobs:
               native = re.search(r'^native-code: (.+)$', badging, re.M)
               assert package and sdk and native
               assert package.groups() == ('app.rawline.mobile', str(meta['versionCode']), meta['versionName'])
-              assert int(sdk[1]) == meta['minSdk'] == 24 and native[1].strip() == f"'{abi}'"
+              assert int(sdk[1]) == meta['minSdk'] == 24
+              assert set(re.findall(r"'([^']+)'", native[1])) == set(expected_abis)
               with zipfile.ZipFile(path) as archive:
                   libraries = [n for n in archive.namelist() if n.startswith('lib/') and n.endswith('.so')]
-                  assert len(libraries) == len(set(libraries)) == 19
-                  assert f'lib/{abi}/librawline.so' in libraries
-                  assert all(n.startswith(f'lib/{abi}/') for n in libraries)
-                  elf_class, machine = (1, 40) if abi == 'armeabi-v7a' else (2, 183)
-                  for name in libraries:
-                      header = archive.read(name)[:20]
-                      assert header[:5] == b'\x7fELF' + bytes([elf_class]) and header[5] == 1
-                      assert int.from_bytes(header[18:20], 'little') == machine
+                  assert len(libraries) == len(set(libraries)) == 19 * len(expected_abis)
+                  assert all(n.split('/')[1] in expected_abis for n in libraries)
+                  for target in expected_abis:
+                      assert f'lib/{target}/librawline.so' in libraries
+                      elf_class, machine = (1, 40) if target == 'armeabi-v7a' else (2, 183)
+                      for name in (n for n in libraries if n.startswith(f'lib/{target}/')):
+                          header = archive.read(name)[:20]
+                          assert header[:5] == b'\x7fELF' + bytes([elf_class]) and header[5] == 1
+                          assert int.from_bytes(header[18:20], 'little') == machine
           inspect(apk)
           assert subprocess.run([str(tools / 'apksigner'), 'verify', str(apk)], capture_output=True).returncode != 0
           name = f'RawlineBratiki-{meta["versionName"]}-r{meta["revision"]}-{abi}.apk'
@@ -241,10 +245,12 @@ jobs:
           assert len(certs) == 1 and certs[0].lower() == expected_signer
           inspect(signed)
           asset = {'name': name, 'size': signed.stat().st_size, 'sha256': sha256(signed)}
+          assets = {target: asset for target in expected_abis}
           manifest = {'schema': 1, 'packageName': 'app.rawline.mobile', 'channel': 'stable',
               'versionName': meta['versionName'], 'versionCode': meta['versionCode'], 'minSdk': meta['minSdk'],
-              'coreRef': meta['upstream']['coreRef'], 'signerSha256': expected_signer, 'assets': {abi: asset}}
-          body = (f'Rawline Bratiki {meta["versionName"]}, revision {meta["revision"]}, ABI {abi}.\n\n'
+              'coreRef': meta['upstream']['coreRef'], 'signerSha256': expected_signer, 'assets': assets}
+          body = (f'Rawline Bratiki {meta["versionName"]}, revision {meta["revision"]}, '
+              f'{"ABIs" if universal else "ABI"} {(" + ".join(expected_abis)) if universal else abi}.\n\n'
               f'GPL source: https://github.com/{repo}/tree/{meta["sourceSha"]}\n'
               f'Source archive: https://github.com/{repo}/archive/{meta["sourceSha"]}.tar.gz\n'
               f'Upstream: {meta["upstream"]["repository"]} at {meta["upstream"]["commit"]}.\n'
@@ -254,7 +260,8 @@ jobs:
           # this workflow never replaces an asset or resumes a release with ambiguous provenance.
           # GitHub resolves the existing verified tag; do not request commit/tag creation during release creation.
           release = api(f'repos/{repo}/releases', {'tag_name': tag,
-              'name': f'Rawline Bratiki {meta["versionName"]}' + (' — TV ARM32 preview' if tv_preview else ''),
+              'name': f'Rawline Bratiki {meta["versionName"]}' + (' — TV ARM32 preview' if tv_preview else
+                  ' — universal ARM64+ARM32' if universal else ''),
               'body': body, 'draft': True, 'prerelease': tv_preview,
               'make_latest': 'false' if tv_preview else 'true'})
           upload = release['upload_url'].split('{', 1)[0] + '?name=' + name

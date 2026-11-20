@@ -133,6 +133,13 @@ def prepare(item, publish):
     preserved = [name for name in git("ls-files", "-z").split("\0") if name and protected(name)
                  and (not name.startswith(".github/workflows/") or Path(name).name.startswith("bratiki"))]
     branch = "bratiki/update-" + item["tag_name"]
+    if publish:
+        existing = json.loads(subprocess.check_output(
+            ["gh", "pr", "list", "--repo", FORK, "--head", branch, "--state", "open", "--json", "number"],
+            text=True))
+        if existing:
+            print(f"Open review PR already exists for {branch}; nothing to do")
+            return
     with tempfile.TemporaryDirectory(prefix="bratiki-sync-", dir=os.environ.get("RUNNER_TEMP")) as folder:
         tree = Path(folder) / "source"
         subprocess.run(["git", "clone", "--quiet", "--no-hardlinks", "--no-checkout", str(ROOT), str(tree)], check=True)

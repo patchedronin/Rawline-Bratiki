@@ -1,5 +1,5 @@
-name: Bratiki unsigned ABI build
-run-name: Bratiki unsigned ${{ inputs.abi || 'arm64-v8a' }} revision ${{ inputs.revision || 2 }}
+name: Bratiki unsigned universal build
+run-name: Bratiki unsigned ${{ inputs.abi || 'universal' }} revision ${{ inputs.revision || 2 }}
 on:
   push:
     branches: [main]
@@ -12,10 +12,10 @@ on:
         default: 2
         required: true
       abi:
-        description: 'Target ABI: ARM64 phone or ARM32 TV'
+        description: 'Target: universal ARM64+ARM32, ARM64 phone or ARM32 TV'
         type: choice
-        options: [arm64-v8a, armeabi-v7a]
-        default: arm64-v8a
+        options: [universal, arm64-v8a, armeabi-v7a]
+        default: universal
         required: true
 permissions:
   contents: read
@@ -33,7 +33,7 @@ jobs:
       RAWLINE_SIGN: 'false'
       UPDATE_SIGNER_SHA256: b3729dc9e7538e42f95e96b8f61c400ad9f4e39d309b23c7e4594043fd0e134c
       CGO_LDFLAGS_ALLOW: '-l:libcronet\.a'
-      RAWLINE_ABI: ${{ inputs.abi || 'arm64-v8a' }}
+      RAWLINE_ABI: ${{ inputs.abi || 'universal' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -58,12 +58,16 @@ jobs:
         run: python3 bratiki/scripts/build.py stage --abi "$RAWLINE_ABI" --apksigner "$ANDROID_HOME/build-tools/35.0.0/apksigner"
       - name: Build matching pinned core and replace staged schema
         uses: ./.github/actions/rawline-core
-      - name: Build unsigned selected-ABI OSS release without signing credentials
+      - name: Build unsigned OSS release without signing credentials
         run: |
           set -euo pipefail
           unset SIGNING_KEYSTORE_B64 SIGNING_STORE_PASSWORD SIGNING_KEY_PASSWORD SIGNING_KEY_ALIAS
           chmod +x gradlew
-          ./gradlew --no-daemon --stacktrace -PrawlineAbis="$RAWLINE_ABI" :app:assembleOssRelease
+          case "$RAWLINE_ABI" in
+            universal) abis="armeabi-v7a,arm64-v8a" ;;
+            *) abis="$RAWLINE_ABI" ;;
+          esac
+          ./gradlew --no-daemon --stacktrace -PrawlineAbis="$abis" :app:assembleOssRelease
       - name: Package attributable unsigned artifact
         run: |
           python3 bratiki/scripts/build.py package --revision "$RAWLINE_BUILD" --abi "$RAWLINE_ABI" \

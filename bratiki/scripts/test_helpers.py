@@ -122,6 +122,37 @@ class ApkStagingTest(unittest.TestCase):
                 run.assert_not_called()
 
 
+    def test_universal_staging_requires_both_reviewed_payloads(self):
+        with tempfile.TemporaryDirectory() as temp:
+            root = Path(temp)
+            apk64, fixture_pin = self.fixture(root)
+            arm = root / "upstream-arm.apk"
+            with zipfile.ZipFile(apk64) as old, zipfile.ZipFile(arm, "w") as new:
+                for name in old.namelist():
+                    new.writestr(name.replace("arm64-v8a", "armeabi-v7a"), old.read(name))
+            arm_pin = {"name": "upstream-arm.apk", "size": arm.stat().st_size, "sha256": build.digest(arm),
+                       "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.4/upstream-arm.apk"}
+            pin = {**fixture_pin, "apks": {"armeabi-v7a": arm_pin}}
+            verified = SimpleNamespace(stdout="Signer #1 certificate SHA-256 digest: 1234\n")
+            with patch.object(build, "ROOT", root), patch.object(build, "load_pin", return_value=pin), \
+                    patch.object(build, "download_apk", side_effect=[apk64, arm]) as download, \
+                    patch.object(build.subprocess, "run", return_value=verified):
+                build.stage(SimpleNamespace(apk=None, apksigner=Path("apksigner"), abi="universal"))
+            self.assertEqual(download.call_count, 2)
+            for target in ("arm64-v8a", "armeabi-v7a"):
+                self.assertTrue((root / f"deployment/carriers/{target}/libcarrier.so").is_file())
+                self.assertTrue((root / f"app/src/main/assets/carrier-licenses/{target}/Carrier-LICENSE").is_file())
+            self.assertFalse((root / "deployment/carriers/arm64-v8a/librawline.so").exists())
+            self.assertFalse((root / "app/src/main/assets/carrier-licenses/x86_64").exists())
+
+    def test_universal_staging_rejects_single_local_apk(self):
+        with tempfile.TemporaryDirectory() as temp:
+            apk, pin = self.fixture(Path(temp))
+            with patch.object(build, "load_pin", return_value=pin):
+                with self.assertRaisesRegex(ValueError, "Universal staging"):
+                    build.stage(SimpleNamespace(apk=apk, apksigner=Path("apksigner"), abi="universal"))
+
+
 class UpstreamMetadataTest(unittest.TestCase):
     def fixture(self, root):
         (root / "nb4a.properties").write_text("PACKAGE_NAME=app.rawline.mobile\nVERSION_NAME=1.2.0\nVERSION_CODE=111\nTHRONE_AAR_REF=" + "a" * 40 + "\n")
