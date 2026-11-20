@@ -8,11 +8,16 @@ exec(compile(setup, 'smoke_vpn.py setup', 'exec'))
 tap('VPN-smoke')
 tap('Connect or disconnect VPN, Not connected')
 time.sleep(2)
-if 'Connection request' in xml():
-    tap('OK')
+for _ in range(30):
+    screen = xml()
+    if 'Connection request' in screen:
+        tap('OK')
+    elif 'Connect or disconnect VPN, Connected' in screen:
+        break
+    time.sleep(1)
 wait_for('Connect or disconnect VPN, Connected')
 state = shell('dumpsys', 'connectivity')
-assert 'TRANSPORT_VPN' in state or 'Transports: VPN' in state
+assert has_vpn_network(state)
 previous = len(hits)
 tap('Check current connection')
 for _ in range(20):
@@ -25,7 +30,7 @@ else:
 shell('am', 'start', '-n', package + '/app.rawline.mobile.ui.QuickDisableShortcut')
 time.sleep(2)
 state = shell('dumpsys', 'connectivity')
-assert 'TRANSPORT_VPN' in state or 'Transports: VPN' in state
+assert has_vpn_network(state)
 assert 'VPN control' in xml(), 'Unsigned command did not require confirmation'
 tap('Cancel')
 wait_for('Connect or disconnect VPN, Connected')

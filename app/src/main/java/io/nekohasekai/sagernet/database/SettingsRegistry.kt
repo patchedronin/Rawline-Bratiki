@@ -173,6 +173,7 @@ object SettingsRegistry {
 
     // ------------------------------------------------------------------------------------------------ tun
 
+    @JvmField val VPN_STACK = oneOf("vpn_stack", "", listOf("", "system", "gvisor", "mixed"))
     @JvmField val VPN_MTU = int("vpn_mtu", 1500) { it in 1000..10000 }
     @JvmField val VPN_IPV6 = bool("vpn_ipv6", false)
     @JvmField val VPN_TUN_IPV4_CIDR = string("vpn_tun_ipv4_cidr", DEFAULT_TUN_IPV4_CIDR) {
@@ -187,8 +188,8 @@ object SettingsRegistry {
         ranges.all { SettingValidators.isPrivateRange(it) }
     }
     @JvmField val ENABLE_TUN_ROUTING = bool("enable_tun_routing", false)
-    // Off by default, as the original has no such guard: VPN Hotspot and other forwarding have no owner and broke.
-    @JvmField val BLOCK_UNOWNED_TUN = bool("block_unowned_tun", false)
+    @JvmField val BLOCK_UNOWNED_TUN = bool("block_unowned_tun", true)
+    @JvmField val BLOCK_UNOWNED_TUN_STRICT = bool("block_unowned_tun_strict", false)
     @JvmField val BLOCK_QUIC = bool("block_quic", true)
     /** The sniffed domain only picks the route (on), or also replaces the IP the server is asked for (off), as Xray's routeOnly. */
     @JvmField val SNIFF_ROUTE_ONLY = bool("sniff_route_only", true)
@@ -378,6 +379,7 @@ object SettingsRegistry {
     /** 0 XHTTP only, 1 XHTTP and Reality, 2 all VLESS (Const.hpp:70-75). */
     @JvmField val XRAY_VLESS_PREFERENCE = int("xray_vless_preference", 1) { it in 0..2 }
     /** Where geoip.dat / geosite.dat come from when an Xray config needs them (SettingsRepo.h:305-307). */
+    @JvmField val XRAY_GEO_AUTO_UPDATE = bool("xray_geo_auto_update", false)
     @JvmField val XRAY_GEOIP_URL = string("xray_geoip_url", "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geoip.dat")
     @JvmField val XRAY_GEOSITE_URL = string("xray_geosite_url", "https://github.com/Loyalsoldier/v2ray-rules-dat/raw/release/geosite.dat")
     @JvmField val SKIP_CERT = bool("skip_cert", false)

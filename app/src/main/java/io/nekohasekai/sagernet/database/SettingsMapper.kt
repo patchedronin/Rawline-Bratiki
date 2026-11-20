@@ -77,6 +77,7 @@ object SettingsMapper {
             customInboundJson = DataStore.customInbound,
             vpnMode = DataStore.serviceMode == Key.MODE_VPN,
             tunMtu = DataStore.vpnMtu,
+            tunStack = DataStore.vpnStack,
             // strict_route is fixed on Android (decision D7).
             tunStrictRoute = true,
             tunIPv4Cidr = DataStore.vpnTunIpv4Cidr,
@@ -122,6 +123,7 @@ object SettingsMapper {
             enableTunRouting = DataStore.enableTunRouting,
             // The owner of a tunnel connection can only be asked from Android 10.
             blockUnownedTun = DataStore.blockUnownedTun && android.os.Build.VERSION.SDK_INT >= 29,
+            blockUnownedTunStrict = DataStore.blockUnownedTunStrict,
             blockQuic = DataStore.blockQuic,
             sniffRouteOnly = DataStore.sniffRouteOnly,
             httpProxyAuth = DataStore.httpProxyAuth,

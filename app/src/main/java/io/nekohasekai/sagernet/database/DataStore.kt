@@ -212,6 +212,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     }
 
     // tun
+    var vpnStack by SettingsRegistry.VPN_STACK
     var vpnMtu by SettingsRegistry.VPN_MTU
     var vpnIpv6 by SettingsRegistry.VPN_IPV6
     var vpnTunIpv4Cidr by SettingsRegistry.VPN_TUN_IPV4_CIDR
@@ -221,6 +222,19 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var vpnPrivateRanges by SettingsRegistry.VPN_PRIVATE_RANGES
     var enableTunRouting by SettingsRegistry.ENABLE_TUN_ROUTING
     var blockUnownedTun by SettingsRegistry.BLOCK_UNOWNED_TUN
+    var blockUnownedTunStrict by SettingsRegistry.BLOCK_UNOWNED_TUN_STRICT
+
+    internal const val TUN_PROTECTION_MODES_MIGRATED = "tun_protection_modes_v1_migrated"
+    fun migrateTunProtectionModes() {
+        if (configurationStore.getBoolean(TUN_PROTECTION_MODES_MIGRATED, false)) return
+        // Commit the defaults and marker together, so a later launch never resets the user's choice.
+        configurationStore.putAll(mapOf(
+            SettingsRegistry.BLOCK_UNOWNED_TUN.key to SettingsRegistry.BLOCK_UNOWNED_TUN.encode(true),
+            SettingsRegistry.BLOCK_UNOWNED_TUN_STRICT.key to SettingsRegistry.BLOCK_UNOWNED_TUN_STRICT.encode(false),
+            TUN_PROTECTION_MODES_MIGRATED to "true",
+        ))
+    }
+
     var blockQuic by SettingsRegistry.BLOCK_QUIC
     var sniffRouteOnly by SettingsRegistry.SNIFF_ROUTE_ONLY
     var httpProxyAuth by SettingsRegistry.HTTP_PROXY_AUTH
@@ -367,6 +381,7 @@ object DataStore : OnPreferenceDataStoreChangeListener {
     var coreBoxApiPort by SettingsRegistry.CORE_BOX_API_PORT
     var coreDnsInPort by SettingsRegistry.CORE_DNS_IN_PORT
     var xrayVlessPreference by SettingsRegistry.XRAY_VLESS_PREFERENCE
+    var xrayGeoAutoUpdate by SettingsRegistry.XRAY_GEO_AUTO_UPDATE
     var xrayGeoipUrl by SettingsRegistry.XRAY_GEOIP_URL
     var xrayGeositeUrl by SettingsRegistry.XRAY_GEOSITE_URL
     var skipCert by SettingsRegistry.SKIP_CERT

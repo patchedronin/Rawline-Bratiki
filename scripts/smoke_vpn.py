@@ -12,6 +12,10 @@ probe_gate = threading.Event()
 probe_gate.set()
 def shell(*args):
     return subprocess.check_output([adb, 'shell', *args], text=True)
+def has_vpn_network(state):
+    # Android 10 includes the underlying link (WIFI|VPN), newer dumps may say only VPN.
+    return bool(re.search(r'\bTRANSPORT_VPN\b|\bTransports:\s*(?:[A-Z0-9_]+[| ]+)*VPN\b', state))
+
 def normalize_labels(value):
     tree=ET.fromstring(value)
     for node in tree.iter('node'):
@@ -19,8 +23,26 @@ def normalize_labels(value):
             if key in node.attrib: node.set(key,' '.join(node.get(key).split()))
     return ET.tostring(tree,encoding='unicode')
 
+# API 29's platform dumper requires a full idle second, which a live connected timer cannot guarantee.
+ui_dump_command = ['uiautomator', 'dump', '/sdcard/vpn-smoke.xml']
+if int(shell('getprop', 'ro.build.version.sdk').strip()) == 29:
+    sdk = Path(os.environ['ANDROID_HOME'])
+    platform = sorted((sdk/'platforms').glob('android-*/android.jar'))[-1]
+    compiler = sorted((sdk/'build-tools').glob('*/d8'))[-1]
+    classes = out/'dump-classes'; classes.mkdir(exist_ok=True)
+    subprocess.check_call(['javac', '--release', '8', '-cp', str(platform), '-d', str(classes), str(Path(__file__).with_name('SmokeUiDump.java'))])
+    archive = out/'ui-dump.zip'
+    subprocess.check_call([str(compiler), '--min-api', '29', '--lib', str(platform), '--output', str(archive), str(classes/'SmokeUiDump.class')])
+    subprocess.check_call([adb, 'push', str(archive), '/data/local/tmp/rawline-ui-dump.zip'])
+    width, height = re.findall(r'(\d+)x(\d+)', shell('wm', 'size'))[-1]
+    ui_dump_command = ['CLASSPATH=/data/local/tmp/rawline-ui-dump.zip:/system/framework/uiautomator.jar', 'app_process', '/system/bin', 'SmokeUiDump', '/sdcard/vpn-smoke.xml', width, height]
+
 def xml():
-    shell('uiautomator', 'dump', '/sdcard/vpn-smoke.xml')
+    dumped = shell(*ui_dump_command)
+    if 'dumped to' not in dumped:
+        (out/'idle-failed.png').write_bytes(subprocess.check_output([adb,'exec-out','screencap','-p']))
+        (out/'idle-failed-window.txt').write_text(shell('dumpsys','window'))
+        raise AssertionError('UIAutomator could not obtain a fresh tree: '+dumped.strip())
     value=shell('cat', '/sdcard/vpn-smoke.xml')
     # Dismiss only the known Google launcher boot ANR, never an application ANR.
     if "Pixel Launcher isn't responding" in value:
@@ -29,7 +51,7 @@ def xml():
             if node.get('resource-id')=='android:id/aerr_close':
                 a,b,c,d=map(int,re.findall(r'\d+',node.attrib['bounds']))
                 shell('input','tap',str((a+c)//2),str((b+d)//2));time.sleep(3)
-                shell('uiautomator','dump','/sdcard/vpn-smoke.xml')
+                shell(*ui_dump_command)
                 return normalize_labels(shell('cat','/sdcard/vpn-smoke.xml'))
     return normalize_labels(value)
 def tap(label):
@@ -50,14 +72,16 @@ def wait_for(value):
         time.sleep(1)
     (out/'vpn-failed.xml').write_text(xml())
     raise AssertionError('State not reached: '+value)
-def confirm_import_group():
-    wait_for('Add to an existing group')
-    tap('Add to an existing group')
-    nodes=[n for n in ET.fromstring(xml()).iter('node') if n.get('class')=='android.widget.CheckedTextView']
-    assert nodes, 'No existing import group is available'
-    target=next((n for n in nodes if n.get('text')=='Server list'),nodes[0])
-    tap(target.get('text'))
-    tap('OK')
+def confirm_import_group(name):
+    for _ in range(30):
+        nodes = list(ET.fromstring(xml()).iter('node'))
+        if any(n.get('text') == f'Confirm you want to import profile {name}?' for n in nodes):
+            tap('Yes')
+        elif any(n.get('text') == name for n in nodes):
+            return
+        time.sleep(1)
+    (out/'vpn-failed.xml').write_text(xml())
+    raise AssertionError('Imported profile row not reached: ' + name)
 
 def profile_latency(name='VPN-smoke'):
     tree=ET.fromstring(xml())
@@ -112,19 +136,28 @@ package=packages[0]; activity=package+'/app.rawline.mobile.ui.MainActivity'
 (out/'tested-package.txt').write_text(shell('dumpsys','package',package))
 # Only this disposable CI emulator's application data is reset.
 shell('pm','clear',package)
-shell('pm','grant',package,'android.permission.POST_NOTIFICATIONS')
+if int(shell('getprop','ro.build.version.sdk').strip()) >= 33:
+    shell('pm','grant',package,'android.permission.POST_NOTIFICATIONS')
 # Match the full UI fixture preparation when this block runs independently.
 shell('dumpsys','deviceidle','whitelist','+'+package)
 # The power button continuously pulses while connected. UIAutomator's idle
 # detector otherwise waits forever for its bounds to stop changing.
 shell('settings','put','global','animator_duration_scale','0')
 shell('am','start','-n',activity,'-a','android.intent.action.VIEW','-d','socks5://127.0.0.1:8868#VPN-smoke')
-time.sleep(5); tap('Yes'); confirm_import_group()
+confirm_import_group('VPN-smoke')
 # A clean installation also asks about background battery restrictions.
 if 'Keep Rawline running' in xml(): tap('Not now')
 wait_for('VPN-smoke')
+# The isolated SOCKS fixture speaks plain HTTP; production keeps its HTTPS default.
+tap('Settings'); tap('Core settings'); tap('Latency test URL')
+# The dialog focuses its editor. Retapping coordinates captured before IME resize can dismiss it.
+wait_for('android.widget.EditText')
+shell('input','keyevent','123'); shell('input','keyevent',*(['67']*256))
+shell('input','text','http://example.test/generate_204'); tap('OK')
+shell('input','keyevent','4'); shell('input','keyevent','4')
+wait_for('VPN-smoke')
 shell('am','start','-n',activity,'-a','android.intent.action.VIEW','-d','socks5://127.0.0.1:8868#VPN-queued')
-time.sleep(3);tap('Yes');confirm_import_group();wait_for('VPN-queued')
+confirm_import_group('VPN-queued')
 # Keep the fixture stalled long enough to inspect two independently requested scopes.
 tap('Settings');tap('Core settings');tap('Test timeout (ms)')
 edit=next(n for n in ET.fromstring(xml()).iter('node') if n.get('class')=='android.widget.EditText')
@@ -136,11 +169,17 @@ tap('VPN-smoke')
 for cycle in range(2):
     tap('Connect or disconnect VPN, Not connected')
     time.sleep(2)
-    if 'Connection request' in xml(): tap('OK')
+    for _ in range(30):
+        screen = xml()
+        if 'Connection request' in screen:
+            tap('OK')
+        elif 'Connect or disconnect VPN, Connected' in screen:
+            break
+        time.sleep(1)
     wait_for('Connect or disconnect VPN, Connected')
     assert 'Check current connection' in xml(), 'Current connection ping did not reset after reconnect'
     state=shell('dumpsys','connectivity')
-    assert 'TRANSPORT_VPN' in state or 'Transports: VPN' in state, 'No Android VPN network'
+    assert has_vpn_network(state), 'No Android VPN network'
     # A different Android UID must not obtain an unauthenticated local SOCKS path.
     subprocess.check_call([adb,'forward','tcp:18880','tcp:2080'])
     reply=b''

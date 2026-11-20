@@ -23,6 +23,7 @@ internal class MobileReorder(
     /** Profile rows: another group's [acceptFrom] zone may take the dragged item. */
     var movable=false
     private var source: View?=null
+    private var keyHandle: View? = null
     private var original=emptyList<View>()
     private var accepted=false
     private var transferred=false
@@ -98,6 +99,7 @@ internal class MobileReorder(
 
     fun bind(handle: View, item: View, id: Long, shadowView: View = item) {
         ids[item]=id
+        bindKeyStart(handle,item)
         handle.setOnLongClickListener {
             if(source!=null) return@setOnLongClickListener true
             // A remote or keyboard has no drag: holding OK picks the item up, the arrows move it, OK or Back puts it down.
@@ -138,7 +140,18 @@ internal class MobileReorder(
         }
     }
 
+    private fun bindKeyStart(handle: View, item: View) {
+        handle.setOnKeyListener { _,code,event ->
+            if(source==null && !handle.isInTouchMode && event.action==android.view.KeyEvent.ACTION_DOWN && event.repeatCount>0 &&
+                code in listOf(android.view.KeyEvent.KEYCODE_DPAD_CENTER,android.view.KeyEvent.KEYCODE_ENTER)) {
+                keyMove(handle,item)
+                true
+            } else false
+        }
+    }
+
     private fun keyMove(handle: View, item: View) {
+        keyHandle = handle
         original=children()
         source=item;accepted=false;transferred=false
         active(true)
@@ -146,8 +159,10 @@ internal class MobileReorder(
         item.performHapticFeedback(HapticFeedbackConstants.LONG_PRESS)
         item.animate().scaleX(heldScale).scaleY(heldScale).setDuration(90).start()
         item.alpha=.7f
+        // Some TV remotes emit repeated key-downs without Android's long-click flag.
+        handle.isPressed=false
         // The release of the press that picked the item up comes here too: only a new press puts it down.
-        var pressed=false
+        var confirmationKey: Int? = null
         handle.setOnKeyListener { _,code,event ->
             if(source!==item) return@setOnKeyListener false
             val back=if(horizontal) android.view.KeyEvent.KEYCODE_DPAD_LEFT else android.view.KeyEvent.KEYCODE_DPAD_UP
@@ -159,8 +174,8 @@ internal class MobileReorder(
                 }
                 android.view.KeyEvent.KEYCODE_DPAD_CENTER,android.view.KeyEvent.KEYCODE_ENTER,android.view.KeyEvent.KEYCODE_BACK -> {
                     // On the release, so the press that ends the move opens nothing.
-                    if(event.action==android.view.KeyEvent.ACTION_DOWN) pressed=true
-                    else if(pressed || code==android.view.KeyEvent.KEYCODE_BACK) { handle.setOnKeyListener(null);item.alpha=1f;finish(true) }
+                    if (event.action == android.view.KeyEvent.ACTION_DOWN && event.repeatCount == 0) confirmationKey = code
+                    if (event.action == android.view.KeyEvent.ACTION_UP && confirmationKey == code) finish(!event.isCanceled)
                     true
                 }
                 // The other neighbours (the other column, the toolbar) stay out of reach until the item is put down.
@@ -177,8 +192,9 @@ internal class MobileReorder(
         val first=ids[item] ?: return
         val second=ids[neighbour] ?: return
         if(!compatible(first,second)) return
-        container.removeView(item)
-        container.addView(item,container.indexOfChild(neighbour)+(if(step>0) 1 else 0))
+        // Detaching the focused row makes Android focus the first control above the list.
+        container.removeView(neighbour)
+        container.addView(neighbour,container.indexOfChild(item)+(if(step<0) 1 else 0))
         handle.requestFocus()
         // The list follows the moved item.
         item.post { item.requestRectangleOnScreen(android.graphics.Rect(0,0,item.width,item.height)) }
@@ -305,6 +321,8 @@ internal class MobileReorder(
 
     private fun finish(commit: Boolean) {
         val item=source ?: return
+        keyHandle?.let { bindKeyStart(it, item) }
+        keyHandle = null
         source=null;container.removeCallbacks(scrollStep)
         clearInsertion()
         container.parent?.requestDisallowInterceptTouchEvent(false)
@@ -320,6 +338,7 @@ internal class MobileReorder(
         children().forEach { it.animate().cancel();it.translationX=0f;it.translationY=0f }
         release(item)
         item.visibility=View.VISIBLE
+        item.alpha=1f
         item.scaleX=heldScale;item.scaleY=heldScale
         item.animate().scaleX(1f).scaleY(1f).setDuration(120).start()
         original=emptyList()
