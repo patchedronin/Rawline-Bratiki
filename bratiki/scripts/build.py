@@ -117,8 +117,8 @@ def stage_abi(pin, abi, apk, apksigner, copy_shared=True):
 def stage(args):
     pin = load_pin()
     abi = getattr(args, "abi", "arm64-v8a")
-    if abi == "universal":
-        require(args.apk is None, "Universal staging downloads both reviewed ABI APKs; --apk is single-ABI only")
+    if abi in ("universal", "both"):
+        require(args.apk is None, "Two-ABI staging downloads both reviewed ABI APKs; --apk is single-ABI only")
         targets = ABIS
     else:
         targets = (abi,)
@@ -128,33 +128,17 @@ def stage(args):
         if not apk:
             apk = download_apk(selected_apk(pin, target), target)
         summary[target] = stage_abi(pin, target, apk, args.apksigner,
-                                    copy_shared=(target == "arm64-v8a" or abi != "universal"))
+                                    copy_shared=(target == "arm64-v8a" or abi not in ("universal", "both")))
     require((ROOT / "app/src/main/assets/sb-dashboard/index.html").is_file(), "Dashboard index missing")
     require((ROOT / "app/src/main/assets/routeprofiles/srslist.h").is_file(), "Route catalog missing")
     require((ROOT / "app/src/main/assets/schema/sing-box.json").is_file(), "Schema missing")
     print(json.dumps(summary, sort_keys=True))
 
 
-def package(args):
-    pin = load_pin()
-    abi = args.abi
-    if abi == "universal":
-        for target in ABIS:
-            selected_apk(pin, target)
-        pattern = "*universal*unsigned.apk"
-        expected_abis = ABIS
-    else:
-        selected_apk(pin, abi)
-        pattern = f"*{abi}*unsigned.apk"
-        expected_abis = (abi,)
-    require(2 <= args.revision <= 998, "Revision must be 2..998")
-    candidates = list((ROOT / "app/build/outputs/apk/oss/release").glob(pattern))
-    require(len(candidates) == 1, f"Expected exactly one unsigned {abi} APK")
-    apk = candidates[0]
+def verify_built_apk(apk, expected_abis, pin, version_code, args):
     verify = subprocess.run([str(args.apksigner), "verify", str(apk)], capture_output=True)
     require(verify.returncode != 0, "Build was unexpectedly signed")
     badging = subprocess.check_output([str(args.aapt2), "dump", "badging", str(apk)], text=True)
-    version_code = pin["versionIndex"] * 1000 + args.revision
     for text in ("name='app.rawline.mobile'", f"versionCode='{version_code}'",
                  f"versionName='{pin['versionName']}'"):
         require(text in badging, f"APK metadata mismatch: {text}")
@@ -184,20 +168,50 @@ def package(args):
             require(per_abi[target] == EXPECTED_NATIVE_LIBRARIES,
                     f"APK lacks the complete {target} library set")
             require(f"lib/{target}/librawline.so" in native, f"APK lacks freshly built {target} RawlineCore")
+    return native
+
+
+def package(args):
+    pin = load_pin()
+    abi = args.abi
+    require(2 <= args.revision <= 998, "Revision must be 2..998")
+    version_code = pin["versionIndex"] * 1000 + args.revision
+    if abi == "both":
+        builds = [(target, f"*{target}*unsigned.apk", (target,)) for target in ABIS]
+    elif abi == "universal":
+        builds = [("universal", "*universal*unsigned.apk", ABIS)]
+    else:
+        builds = [(abi, f"*{abi}*unsigned.apk", (abi,))]
+    for _, _, expected in builds:
+        for target in expected:
+            selected_apk(pin, target)
+    args.output.mkdir(parents=True, exist_ok=True)
+    files = {}
+    native_counts = {}
+    for label, pattern, expected_abis in builds:
+        candidates = list((ROOT / "app/build/outputs/apk/oss/release").glob(pattern))
+        require(len(candidates) == 1, f"Expected exactly one unsigned {label} APK")
+        apk = candidates[0]
+        native_counts[label] = len(verify_built_apk(apk, expected_abis, pin, version_code, args))
+        target = args.output / f"unsigned-{label}.apk"
+        shutil.copyfile(apk, target)
+        files[label] = {"name": target.name, "size": target.stat().st_size, "sha256": digest(target)}
     source = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=ROOT, text=True).strip()
     require(os.environ.get("GITHUB_SHA", source) == source, "Checkout is not workflow source SHA")
-    args.output.mkdir(parents=True, exist_ok=True)
-    target = args.output / f"unsigned-{abi}.apk"
-    shutil.copyfile(apk, target)
     metadata = {"schema": 1, "repository": os.environ.get("GITHUB_REPOSITORY", "patchedronin/Rawline-Bratiki"),
                 "sourceSha": source, "runId": os.environ.get("GITHUB_RUN_ID"),
                 "runAttempt": os.environ.get("GITHUB_RUN_ATTEMPT"), "upstream": pin,
                 "packageName": "app.rawline.mobile", "versionName": pin["versionName"],
                 "versionCode": version_code, "revision": args.revision, "minSdk": pin["minSdk"],
-                 "signerSha256": SIGNER, "abi": abi,
-                 "unsignedSize": target.stat().st_size, "unsignedSha256": digest(target)}
-    if abi == "universal":
-        metadata.update(abis=list(ABIS), nativeLibraries=len(native))
+                 "signerSha256": SIGNER, "abi": abi}
+    if abi == "both":
+        metadata.update(abis=list(ABIS), unsigned=files, nativeLibrariesByAbi=native_counts)
+    else:
+        label = "universal" if abi == "universal" else abi
+        entry = files[label]
+        metadata.update(unsignedSize=entry["size"], unsignedSha256=entry["sha256"])
+        if abi == "universal":
+            metadata.update(abis=list(ABIS), nativeLibraries=native_counts[label])
     (args.output / "build-metadata.json").write_text(json.dumps(metadata, indent=2) + "\n", encoding="utf-8")
 
 
@@ -207,11 +221,11 @@ def main():
     staging = sub.add_parser("stage")
     staging.add_argument("--apk", type=Path, help="Use a local upstream APK; all pin checks still apply")
     staging.add_argument("--apksigner", required=True, type=Path)
-    staging.add_argument("--abi", choices=(*ABIS, "universal"), default="arm64-v8a")
+    staging.add_argument("--abi", choices=(*ABIS, "universal", "both"), default="arm64-v8a")
     staging.set_defaults(handler=stage)
     packaging = sub.add_parser("package")
     packaging.add_argument("--revision", required=True, type=int)
-    packaging.add_argument("--abi", choices=(*ABIS, "universal"), default="arm64-v8a")
+    packaging.add_argument("--abi", choices=(*ABIS, "universal", "both"), default="arm64-v8a")
     packaging.add_argument("--apksigner", required=True, type=Path)
     packaging.add_argument("--aapt2", required=True, type=Path)
     packaging.add_argument("--output", type=Path, default=ROOT / "bratiki-dist")

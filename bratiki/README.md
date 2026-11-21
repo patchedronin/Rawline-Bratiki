@@ -1,30 +1,32 @@
 # Build and release operation
 
-## Universal APK for phone and TV (default)
+## Mobile and TV APKs (default)
 
-`abi=universal` is the default in both workflows and on every push to `main`.
+`abi=both` is the default in both workflows and on every push to `main`.
 Staging requires both reviewed donors (`apk` and `apks.armeabi-v7a` in
 `upstream.json`) and copies 19 native libraries for each ABI. The core action
-builds one pinned AAR with both JNI directories; Gradle packages one APK with 38
-libraries. Android selects ARM64 on phones and ARM32 on 32-bit TVs. The manifest
-keeps leanback optional, and `BratikiDefaults` adds the TV YouTube package only
-when `SagerNet.isTv`.
+builds one pinned AAR with both JNI directories; Gradle emits two split APKs
+(19 libraries each). The manifest keeps leanback optional, and `BratikiDefaults`
+adds the TV YouTube package only when `SagerNet.isTv`.
 
-Artifact: `unsigned-universal.apk`. Release asset:
-`RawlineBratiki-X.Y.Z-rN-universal.apk`. Its update manifest contains both
-`arm64-v8a` and `armeabi-v7a` entries pointing to the same file, so phone and TV
-clients update from one release. Universal releases are stable/latest and use
-tag `rawline-X.Y.Z` or `+rN`; only ARM32-only previews keep `-tv` and
-prerelease.
+One release contains two signed assets:
+- `RawlineBratiki-X.Y.Z-rN-mobile-arm64-v8a.apk`
+- `RawlineBratiki-X.Y.Z-rN-tv-armeabi-v7a.apk`
 
-The universal APK is about 289 MiB versus 153–154 MiB per ABI; `x86_64` is not
-included. A merged upstream migration triggers this build automatically on push
-to `main`; signing and publication remain manual and owner-approved.
+Its update manifest maps `arm64-v8a` to the mobile asset and `armeabi-v7a` to
+the TV asset, so each device downloads only its ~160 MiB APK. A single
+304 MiB universal APK remains available with `abi=universal` for manual installs,
+but it is not the default and is not referenced by the update manifest unless
+built as `abi=universal`.
+
+`abi=arm64-v8a` and `abi=armeabi-v7a` still produce one signed APK of that ABI.
+A merged upstream migration triggers the `both` build automatically on push to
+`main`; signing and publication remain manual and owner-approved.
 
 ## ARM32 TV support (revision 5)
 
 Per-ABI builds remain available with reviewed `abi` values `arm64-v8a` (phone)
-and `armeabi-v7a` (32-bit TV); `universal` is the default. ARM32 donor is
+and `armeabi-v7a` (32-bit TV); `both` is the default. ARM32 donor is
 separately size/SHA/signature pinned in `upstream.json`. The build produces a
 fresh pinned multi-ABI core, packages only the requested split and verifies all
 19 ELF headers. Artifact ABI is checked again against the explicit expected
@@ -34,8 +36,9 @@ workflow artifact.
 For TV use a new unused revision (5), pass `abi=armeabi-v7a` to both workflows,
 create the matching exact-source tag after the unsigned run succeeds, then have
 the owner approve environment `release`. Existing phone releases/assets are never
-overwritten. Each release manifest lists only its actual ABI; the updater can
-retain earlier releases for other ABIs. Test the TV APK before deploying it.
+overwritten. An ARM32-only release (`abi=armeabi-v7a`) lists only that ABI and stays a
+prerelease; a `both` release lists both light assets. The updater keeps earlier
+releases for the other ABI. Test the TV APK before deploying it.
 
 The first ARM32 release uses tag `rawline-1.1.4+r5-tv` and is a **prerelease**, not
 GitHub latest: the existing stable phone r4 remains unchanged and is not offered
@@ -55,21 +58,21 @@ The new-install preset includes `com.google.android.youtube.tv` only on Android 
 
 ## Initial release
 
-1. Push reviewed source to `main`; the unsigned universal build runs automatically (revision 2).
-2. Open Actions → **Bratiki unsigned universal build** and wait for success. Copy its run ID from the URL. Build artifacts expire after 14 days.
+1. Push reviewed source to `main`; the unsigned mobile+TV build runs automatically (revision 2).
+2. Open Actions → **Bratiki unsigned mobile+TV build** and wait for success. Copy its run ID from the URL. Build artifacts expire after 14 days.
 3. Verify the build's `head_sha`, then create a lightweight `rawline-1.1.4` tag at that exact commit using the owner's GitHub account. GitHub rejects release creation by `GITHUB_TOKEN` when it also requests creation of a tag pointing to workflow changes. The signing workflow accepts only an existing tag at the verified source SHA.
-4. Dispatch **Bratiki isolated signing and release**, `run_id=<successful run>`, `revision=2`, `abi=universal`.
+4. Dispatch **Bratiki isolated signing and release**, `run_id=<successful run>`, `revision=2`, `abi=both`.
 5. Review the selected source commit and build provenance, then approve environment `release` in GitHub.
-6. Confirm Releases contains `rawline-1.1.4`, its universal APK, source commit links and embedded `rawline-update` metadata with both ABI keys.
+6. Confirm Releases contains `rawline-1.1.4`, both mobile and TV APKs, source commit links and embedded `rawline-update` metadata with per-ABI asset entries.
 7. Install the first channel-enabled APK manually over the existing mod. Future **Check updates** requests use this repository.
 
 GitHub CLI equivalents:
 
 ```sh
-gh workflow run bratiki-build.yml -R patchedronin/Rawline-Bratiki -f revision=2 -f abi=universal
+gh workflow run bratiki-build.yml -R patchedronin/Rawline-Bratiki -f revision=2 -f abi=both
 gh run list -R patchedronin/Rawline-Bratiki --workflow bratiki-build.yml
 gh api -X POST repos/patchedronin/Rawline-Bratiki/git/refs -f ref=refs/tags/rawline-1.1.4 -f sha=VERIFIED_BUILD_SOURCE_SHA
-gh workflow run bratiki-release.yml -R patchedronin/Rawline-Bratiki -f run_id=RUN_ID -f revision=2 -f abi=universal
+gh workflow run bratiki-release.yml -R patchedronin/Rawline-Bratiki -f run_id=RUN_ID -f revision=2 -f abi=both
 ```
 
 An existing public release is never replaced; an existing source tag is accepted only if it points to the exact selected build commit. If publication is interrupted, inspect the draft, assets and tag manually. Delete an incomplete **unpublished** draft only after verifying its provenance, then explicitly retry. Do not remove a published release to hide an error: ship a new, properly numbered revision instead.
@@ -86,7 +89,7 @@ gh workflow run bratiki-upstream.yml -R patchedronin/Rawline-Bratiki -f mode=pre
 
 Optional: `-f tag=rawline-X.Y.Z`. The helper fetches upstream source without executing it, applies the complete custom patch using three-way merge, regenerates it against the new baseline, preserves the reviewed Bratiki workflows and opens a **draft pull request**. Conflicts, upstream signer/minSdk changes or manifest inconsistencies stop the preparation. A clean text merge is not proof of runtime compatibility.
 
-Review/merge the PR. A normal merge to `main` triggers `bratiki-build.yml`, whose default `abi=universal` produces `unsigned-universal.apk` (revision 2). To verify the migration branch before merging, dispatch the same workflow with `--ref bratiki/update-rawline-X.Y.Z -f revision=2 -f abi=universal`; that unsigned artifact cannot be released because the release validator requires a `main` build. If the merge was made with `GITHUB_TOKEN` and no run appeared, dispatch the build explicitly. Rebuild the pinned core when upstream changes its core reference; never reuse an old AAR blindly. Changed transport count or a missing ARM32 donor fails staging until reviewed.
+Review/merge the PR. A normal merge to `main` triggers `bratiki-build.yml`, whose default `abi=both` produces `unsigned-arm64-v8a.apk` and `unsigned-armeabi-v7a.apk` (revision 2). To verify the migration branch before merging, dispatch the same workflow with `--ref bratiki/update-rawline-X.Y.Z -f revision=2 -f abi=both`; that unsigned artifact cannot be released because the release validator requires a `main` build. If the merge was made with `GITHUB_TOKEN` and no run appeared, dispatch the build explicitly. Rebuild the pinned core when upstream changes its core reference; never reuse an old AAR blindly. Changed transport count or a missing ARM32 donor fails staging until reviewed.
 
 Version code is upstream `VERSION_CODE * 1000 + revision`; revisions accepted are 2..998. For a later upstream base use revision 2 again; it still outranks earlier upstream bases. Revision 2 uses tag `rawline-X.Y.Z`; subsequent hotfixes use `rawline-X.Y.Z+r3`, `+r4`, etc. The updater accepts semver build metadata and selects the higher manifest versionCode. Do not reuse a revision for a different APK or overwrite an existing public release.
 
@@ -96,7 +99,7 @@ Version code is upstream `VERSION_CODE * 1000 + revision`; revisions accepted ar
 python -m unittest discover -s bratiki/scripts -p 'test_*.py'
 python bratiki/scripts/upstream.py check
 python bratiki/scripts/build.py stage --apk /path/to/verified-upstream.apk --apksigner /path/to/apksigner
-python bratiki/scripts/build.py stage --abi universal --apksigner /path/to/apksigner  # downloads both pinned donors
+python bratiki/scripts/build.py stage --abi both --apksigner /path/to/apksigner  # downloads both pinned donors
 ```
 
 To review a migration locally without pushing: use a clean `main` checkout and run `python bratiki/scripts/upstream.py prepare-update --tag rawline-X.Y.Z`. It generates a reviewable Git bundle. The tag must differ from the current pin.
@@ -105,7 +108,7 @@ To review a migration locally without pushing: use a clean `main` checkout and r
 
 New profile databases start in TUN / **only selected apps** mode: official Telegram
 (`org.telegram.messenger`, `org.telegram.messenger.web`) and YouTube
-(`com.google.android.youtube`); on Android TV the universal APK also selects
+(`com.google.android.youtube`); on Android TV the TV APK also selects
 `com.google.android.youtube.tv` via `SagerNet.isTv`. Other apps, including
 browsers and YouTube Music, stay outside the VPN. Missing packages remain selected by name for later installation;
 if none is installed, VPN startup fails instead of capturing every app.

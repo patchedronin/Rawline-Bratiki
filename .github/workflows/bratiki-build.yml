@@ -1,5 +1,5 @@
-name: Bratiki unsigned universal build
-run-name: Bratiki unsigned ${{ inputs.abi || 'universal' }} revision ${{ inputs.revision || 2 }}
+name: Bratiki unsigned mobile+TV build
+run-name: Bratiki unsigned ${{ inputs.abi || 'both' }} revision ${{ inputs.revision || 2 }}
 on:
   push:
     branches: [main]
@@ -12,10 +12,10 @@ on:
         default: 2
         required: true
       abi:
-        description: 'Target: universal ARM64+ARM32, ARM64 phone or ARM32 TV'
+        description: 'Target: both light APKs (mobile arm64 + TV arm32), universal, or one ABI'
         type: choice
-        options: [universal, arm64-v8a, armeabi-v7a]
-        default: universal
+        options: [both, universal, arm64-v8a, armeabi-v7a]
+        default: both
         required: true
 permissions:
   contents: read
@@ -35,7 +35,7 @@ jobs:
       RAWLINE_SIGN: 'false'
       UPDATE_SIGNER_SHA256: b3729dc9e7538e42f95e96b8f61c400ad9f4e39d309b23c7e4594043fd0e134c
       CGO_LDFLAGS_ALLOW: '-l:libcronet\.a'
-      RAWLINE_ABI: ${{ inputs.abi || 'universal' }}
+      RAWLINE_ABI: ${{ inputs.abi || 'both' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -66,7 +66,7 @@ jobs:
           unset SIGNING_KEYSTORE_B64 SIGNING_STORE_PASSWORD SIGNING_KEY_PASSWORD SIGNING_KEY_ALIAS
           chmod +x gradlew
           case "$RAWLINE_ABI" in
-            universal) abis="armeabi-v7a,arm64-v8a" ;;
+            both|universal) abis="armeabi-v7a,arm64-v8a" ;;
             *) abis="$RAWLINE_ABI" ;;
           esac
           ./gradlew --no-daemon --stacktrace -PrawlineAbis="$abis" :app:assembleOssRelease

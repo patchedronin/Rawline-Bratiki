@@ -149,7 +149,7 @@ class ApkStagingTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as temp:
             apk, pin = self.fixture(Path(temp))
             with patch.object(build, "load_pin", return_value=pin):
-                with self.assertRaisesRegex(ValueError, "Universal staging"):
+                with self.assertRaisesRegex(ValueError, "Two-ABI staging"):
                     build.stage(SimpleNamespace(apk=apk, apksigner=Path("apksigner"), abi="universal"))
 
 
