@@ -118,10 +118,15 @@ class UiTourTest {
         })
         return group to SagerDatabase.proxyDao.getByGroup(group.id).first()
     }
+    private fun allowBatteryForTour() {
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+            "cmd deviceidle whitelist +" + context.packageName,
+        )).use { it.readBytes() }
+    }
+
     /** Pictures for the README: made-up subscriptions and servers of the supported protocols, nothing private. */
     private fun demo(): ProxyGroup {
-        // No battery prompt over the picture.
-        android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand("cmd deviceidle whitelist +" + context.packageName)).use { it.readBytes() }
+        allowBatteryForTour()
         SagerDatabase.groupDao.allGroups().filter { it.name == "Sub 3" }.forEach { SagerDatabase.groupDao.deleteById(it.id) }
         val now = System.currentTimeMillis() / 1000
         fun group(name: String, info: app.rawline.mobile.database.SubUserInfo, servers: List<Triple<String, app.rawline.mobile.outbound.Outbound, Int>>): ProxyGroup {
@@ -134,12 +139,7 @@ class UiTourTest {
             return group
         }
         val gb = 1024L * 1024 * 1024
-        group("Sub 1", app.rawline.mobile.database.SubUserInfo(valid = true, hasQuota = true, download = 12 * gb + 400 * 1024 * 1024, total = 200 * gb), listOf(
-            Triple("🇩🇪 Германия", app.rawline.mobile.outbound.types.Vless(), 48),
-            Triple("🇵🇱 Польша", app.rawline.mobile.outbound.types.Hysteria(), 57),
-            Triple("🇱🇻 Латвия", app.rawline.mobile.outbound.types.Mrtt(), 92),
-        ))
-        return group("Sub 2", app.rawline.mobile.database.SubUserInfo(valid = true, hasQuota = true, download = 3 * gb + 800 * 1024 * 1024, total = 0, expire = 1798761600), listOf(
+        return group("Серверы", app.rawline.mobile.database.SubUserInfo(valid = true, hasQuota = true, download = 3 * gb + 800 * 1024 * 1024, total = 200 * gb), listOf(
             Triple("🇳🇱 Нидерланды", app.rawline.mobile.outbound.types.Vless(), 61),
             Triple("🇫🇮 Финляндия", app.rawline.mobile.outbound.types.Qwdtt(), 197),
             Triple("🇸🇪 Швеция", app.rawline.mobile.outbound.types.Csqtt(), 214),
@@ -147,7 +147,7 @@ class UiTourTest {
             Triple("🇱🇹 Литва", app.rawline.mobile.outbound.types.TrustTunnel(), 73),
             Triple("🇫🇷 Франция", app.rawline.mobile.outbound.types.WdttPlus(), 165),
             Triple("🇨🇿 Чехия", app.rawline.mobile.outbound.types.Freeturn(), 142),
-            Triple("S3 · запасной", app.rawline.mobile.outbound.types.S3Bypass(), 158),
+            Triple("🇳🇴 Норвегия", app.rawline.mobile.outbound.types.S3Bypass(), 158),
         ))
     }
     private fun home(mode: String, control: String = "button", bottom: Boolean = false, chip: String = "top", tiles: String = "off", readme: Boolean = false) {
@@ -165,6 +165,23 @@ class UiTourTest {
     }
     private fun orb(connected: Boolean, bottom: Boolean = false, control: String = "button", readme: Boolean = false, lines: Boolean = false) {
         home("groups", control, bottom = bottom, readme = readme)
+        if (readme) {
+            val connectedAt = android.os.SystemClock.elapsedRealtime() - 129_000
+            val host = resumed() as MainActivity
+            // Use the real connected-state rendering with a demo profile and no running VPN.
+            repeat(10) {
+                instrumentation.runOnMainSync {
+                    DataStore.serviceMode = Key.MODE_VPN
+                    DataStore.serviceState = app.rawline.mobile.bg.BaseService.State.Connected
+                    DataStore.mobileConnectedAt = connectedAt
+                    val fragment = host.supportFragmentManager.findFragmentById(R.id.fragment_holder)
+                    check(fragment is MobileHomeFragment)
+                    fragment.updateState()
+                }
+                Thread.sleep(100)
+            }
+            return
+        }
         // The home screen rewrites the state every second from the real service, so it is held here until the picture.
         repeat(24) {
             instrumentation.runOnMainSync {
@@ -177,9 +194,6 @@ class UiTourTest {
                     if (connected && view is android.widget.TextView) {
                         val label = view.text.toString()
                         if (label.startsWith("↓") || label.startsWith("↑")) (view.parent as android.view.View).visibility = android.view.View.VISIBLE
-                        if (readme && label.startsWith("↓")) view.text = "↓ 2,4 МБ/s"
-                        if (readme && label.startsWith("↑")) view.text = "↑ 312 КБ/s"
-                        if (readme && label.startsWith("Нажмите")) view.text = "Подключено · 00:12:49"
                         if (label == context.getString(R.string.qmobile_check_connection)) view.visibility = android.view.View.VISIBLE
                         // The three lines a live connection writes beside the switches, a long subscription name among them.
                         if (lines && view.tag == "switchCell") view.text = listOf("Подключено  00:12:49", "svc-cdn.cloud-node.uk подписка с длинным именем", "🇸🇪 se-tcp-reality-long-server-name")
@@ -216,12 +230,29 @@ class UiTourTest {
         fixtures()
         // The first visit plays the tutorial over the editor; only its own pictures want it.
         DataStore.configurationStore.putBoolean("qmobileLayoutTutorialSeen", !tutorial)
-        if (reset) { MobileHomeLayout.tilesBottom = false; MobileHomeLayout.controlBottom = false; MobileHomeLayout.chipBottom = false; MobileHomeLayout.chipNearList = false; MobileHomeLayout.extendedTiles = false; MobileHomeLayout.controlSwitches = false }
+        if (reset) { MobileHomeLayout.tilesNearList = false; MobileHomeLayout.tilesBottom = false; MobileHomeLayout.controlBottom = false; MobileHomeLayout.chipBottom = false; MobileHomeLayout.chipNearList = false; MobileHomeLayout.extendedTiles = false; MobileHomeLayout.controlSwitches = false }
         open(MobileLayoutEditorActivity::class.java)
     }
-    private fun shot(name: String) {
-        val bitmap = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
-        try { File(context.filesDir, "tour-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 90, it) } } finally { bitmap.recycle() }
+    private fun shot(name: String, contentOnly: Boolean = false) {
+        val screenshot = requireNotNull(instrumentation.uiAutomation.takeScreenshot())
+        try {
+            var top = 0
+            if (contentOnly) instrumentation.runOnMainSync {
+                val decor = resumed().window.decorView
+                val insets = androidx.core.view.ViewCompat.getRootWindowInsets(decor)
+                top = insets?.getInsets(androidx.core.view.WindowInsetsCompat.Type.statusBars())?.top ?: 0
+            }
+            val bitmap = if (top in 1 until screenshot.height) {
+                Bitmap.createBitmap(screenshot, 0, top, screenshot.width, screenshot.height - top)
+            } else screenshot
+            try {
+                File(context.filesDir, "tour-$name.png").outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 90, it) }
+            } finally {
+                if (bitmap !== screenshot) bitmap.recycle()
+            }
+        } finally {
+            screenshot.recycle()
+        }
     }
 
     private val screens: List<Pair<String, () -> Unit>> = listOf(
@@ -301,6 +332,9 @@ class UiTourTest {
     } + listOf(
         "layout-editor" to { editor() },
         "layout-editor-gestures" to {
+            MobileHomeLayout.chipHidden = false
+            MobileHomeLayout.hiddenSwitch = ""
+            MobileHomeLayout.proxySwitchFirst = false
             editor()
             val tiles = frameOf(R.string.qmobile_layout_tiles)
             val x = tiles.exactCenterX(); val y = tiles.exactCenterY()
@@ -308,7 +342,8 @@ class UiTourTest {
             val downAt = android.os.SystemClock.uptimeMillis()
             touch(android.view.MotionEvent.ACTION_DOWN, x, y, downAt)
             Thread.sleep(900)
-            val end = context.resources.displayMetrics.heightPixels * .8f
+            val end = centerOf(java.util.Locale("", "fi").displayCountry)?.get(1)?.toFloat()
+                ?: context.resources.displayMetrics.heightPixels * .9f
             for (step in 1..12) { touch(android.view.MotionEvent.ACTION_MOVE, x, y + (end - y) * step / 12, downAt); Thread.sleep(30) }
             touch(android.view.MotionEvent.ACTION_UP, x, end, downAt)
             Thread.sleep(600)
@@ -346,6 +381,43 @@ class UiTourTest {
                 Thread.sleep(600)
                 check(MobileHomeLayout.chipNearList && !MobileHomeLayout.chipBottom) { "the subscription did not move under the connection control" }
                 check(frameOf(R.string.qmobile_layout_chip).top >= frameOf(R.string.qmobile_layout_control).bottom - 2) { "the subscription is not drawn under the connection control" }
+                val mode = DataStore.serviceMode
+                val frame = frameOf(R.string.qmobile_layout_control)
+                val switchX = frame.left + frame.width() * .25f
+                val switchY = frame.top + frame.height() * .60f
+                val swapAt = android.os.SystemClock.uptimeMillis()
+                touch(android.view.MotionEvent.ACTION_DOWN, switchX, switchY, swapAt)
+                Thread.sleep(850)
+                touch(android.view.MotionEvent.ACTION_UP, switchX, switchY, swapAt)
+                check(MobileHomeLayout.proxySwitchFirst && DataStore.serviceMode == mode) { "holding a switch did not only change the layout" }
+                val originalChip = frameOf(R.string.qmobile_layout_chip)
+                val removeButton = frameOf(R.string.qmobile_layout_remove_subscription)
+                press(context.getString(R.string.qmobile_layout_remove_subscription))
+                check(MobileHomeLayout.chipHidden && centerOf(context.getString(R.string.qmobile_layout_chip)) != null) {
+                    "the disabled subscription block lost its placeholder"
+                }
+                val hiddenChip = frameOf(R.string.qmobile_layout_chip)
+                val restoreButton = frameOf(R.string.qmobile_layout_restore_subscription)
+                check(kotlin.math.abs(originalChip.height() - hiddenChip.height()) <= 4 &&
+                    kotlin.math.abs(removeButton.centerX() - restoreButton.centerX()) <= 4 &&
+                    kotlin.math.abs(removeButton.centerY() - restoreButton.centerY()) <= 4) {
+                    "hiding the subscription changed the block size or moved its restore button"
+                }
+                press(context.getString(R.string.qmobile_layout_restore_subscription))
+                check(!MobileHomeLayout.chipHidden) { "the subscription block did not return" }
+                val heading = frameOf(R.string.qmobile_layout_group_header)
+                val headingButtonX = heading.right - heading.width() * .065f
+                val headingButtonY = heading.top + heading.height() * .22f
+                val landscape = context.resources.configuration.orientation == android.content.res.Configuration.ORIENTATION_LANDSCAPE
+                val joined = MobileHomeLayout.groupHeaderJoined(landscape)
+                val otherParts = MobileHomeLayout.scrollParts
+                val toggleAt = android.os.SystemClock.uptimeMillis()
+                touch(android.view.MotionEvent.ACTION_DOWN, headingButtonX, headingButtonY, toggleAt)
+                touch(android.view.MotionEvent.ACTION_UP, headingButtonX, headingButtonY, toggleAt)
+                Thread.sleep(650)
+                check(MobileHomeLayout.groupHeaderJoined(landscape) != joined && MobileHomeLayout.scrollParts == otherParts) {
+                    "the list heading is not independently joinable"
+                }
             }
         },
         "home-after-editor" to { open(MainActivity::class.java); Thread.sleep(1000) },
@@ -403,12 +475,15 @@ class UiTourTest {
                 }
             }
         },
-    ) + (0..5).map { step ->
+    ) + (0..4).map { step ->
         // Each tutorial step half way through its loop.
         "layout-tutorial-$step" to {
             layout()
             editor(tutorial = true)
-            repeat(step) { tap(R.string.qmobile_layout_tutorial_next) }
+            repeat(step) { press(context.getString(R.string.qmobile_layout_tutorial_next)) }
+            val captions = listOf(R.string.qmobile_layout_step_drag, R.string.qmobile_layout_step_double,
+                R.string.qmobile_layout_step_pinch, R.string.qmobile_layout_step_remove, R.string.qmobile_layout_step_scroll)
+            check(centerOf(context.getString(captions[step])) != null) { "the requested tutorial step was not shown" }
             Thread.sleep(2100L - if (step > 0) 2000L else 0L)
         }
     } + listOf(
@@ -453,9 +528,18 @@ class UiTourTest {
         // The tutorial turns its pages by a swipe as well as by its button.
         "layout-tutorial-swipe" to {
             layout(); editor(tutorial = true)
-            val width = context.resources.displayMetrics.widthPixels; val height = context.resources.displayMetrics.heightPixels
+            val caption = context.getString(R.string.qmobile_layout_step_drag)
+            val bounds = android.graphics.Rect()
+            for (attempt in 1..20) {
+                topmost(caption)?.getBoundsInScreen(bounds)
+                if (!bounds.isEmpty) break
+                Thread.sleep(100)
+            }
+            check(!bounds.isEmpty) { "the tutorial did not open" }
+            val width = context.resources.displayMetrics.widthPixels
+            val y = bounds.top - 20
             android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
-                "input swipe ${(width * .85f).toInt()} ${height / 2} ${(width * .15f).toInt()} ${height / 2} 200")).use { it.readBytes() }
+                "input swipe ${(width * .80f).toInt()} $y ${(width * .20f).toInt()} $y 350")).use { it.readBytes() }
             Thread.sleep(1500)
             check(topmost(context.getString(R.string.qmobile_layout_step_double)) != null) { "a swipe to the left did not open the second step" }
             // Back to the right, ending on "Next": one page back, and the button is not pressed as well.
@@ -484,6 +568,190 @@ class UiTourTest {
             check(app.rawline.mobile.deploy.DeployStore.all().none { it.id == server.id }) { "the swiped VPS is still stored" }
             check(topmost("Removable VPS") == null) { "the removed VPS is still shown" }
         },
+        "home-subscription-picker-once" to {
+            layout()
+            MobileHomeLayout.chipHidden = false
+            home("groups")
+            fun tapTitle(bottom: Boolean): android.view.View {
+                val titles = mutableListOf<Pair<android.view.View, android.graphics.Rect>>()
+                instrumentation.runOnMainSync {
+                    fun collect(view: android.view.View) {
+                        if (!view.isShown) return
+                        if (view is android.widget.TextView && view.text.toString() == "Sub 3") {
+                            val bounds = android.graphics.Rect()
+                            if (view.getGlobalVisibleRect(bounds)) titles.add(view to bounds)
+                        }
+                        if (view is android.view.ViewGroup) for (i in 0 until view.childCount) collect(view.getChildAt(i))
+                    }
+                    collect(resumed().window.decorView)
+                }
+                check(titles.size == if (MobileHomeLayout.chipHidden) 1 else 2) {
+                    "visible subscription labels: ${titles.size}, picker block hidden: ${MobileHomeLayout.chipHidden}"
+                }
+                val (title, bounds) = if (bottom) titles.maxBy { it.second.top } else titles.minBy { it.second.top }
+                val time = android.os.SystemClock.uptimeMillis()
+                touch(android.view.MotionEvent.ACTION_DOWN, bounds.exactCenterX(), bounds.exactCenterY(), time)
+                touch(android.view.MotionEvent.ACTION_UP, bounds.exactCenterX(), bounds.exactCenterY(), time)
+                return title
+            }
+            val footer = context.getString(R.string.qmobile_manage_groups)
+            tapTitle(bottom = true)
+            Thread.sleep(400)
+            check(centerOf(footer) == null) { "the second heading opened a duplicate picker" }
+            tapTitle(bottom = false)
+            Thread.sleep(750)
+            check(centerOf(footer) != null) { "the separate block did not open the picker" }
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            Thread.sleep(400)
+            MobileHomeLayout.chipHidden = true
+            home("groups")
+            val onlyTitle = tapTitle(bottom = true)
+            Thread.sleep(800)
+            check(centerOf(footer) != null) { "the only heading did not open the picker" }
+            // Send clicks to the original heading; touches at the same coordinates could select a sheet item.
+            instrumentation.runOnMainSync {
+                val heading = onlyTitle.parent.parent as android.view.View
+                repeat(2) { check(heading.performClick()) }
+            }
+            instrumentation.sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_BACK)
+            Thread.sleep(600)
+            check(centerOf(footer) == null) { "the picker opened more than once" }
+        },
+        "layout-title-next-to-connection" to {
+            layout()
+            editor()
+            val tiles = frameOf(R.string.qmobile_layout_tiles)
+            val control = frameOf(R.string.qmobile_layout_control)
+            val x = tiles.exactCenterX()
+            val startY = tiles.exactCenterY()
+            val targetY = control.bottom - control.height() * .12f
+            val time = android.os.SystemClock.uptimeMillis()
+            touch(android.view.MotionEvent.ACTION_DOWN, x, startY, time)
+            Thread.sleep(850)
+            for (step in 1..10) {
+                touch(android.view.MotionEvent.ACTION_MOVE, x, startY + (targetY - startY) * step / 10, time)
+                Thread.sleep(30)
+            }
+            touch(android.view.MotionEvent.ACTION_UP, x, targetY, time)
+            Thread.sleep(650)
+            check(MobileHomeLayout.tilesNearList && !MobileHomeLayout.tilesBottom)
+            check(frameOf(R.string.qmobile_layout_tiles).top >= frameOf(R.string.qmobile_layout_control).bottom - 2) {
+                "the title returned above the connection block"
+            }
+        },
+        "home-reuse-connection-control" to {
+            layout()
+            orb(connected = true, bottom = true)
+            instrumentation.runOnMainSync {
+                val activity = resumed() as MainActivity
+                val fragments = activity.supportFragmentManager
+                val home = fragments.findFragmentById(R.id.fragment_holder)
+                check(home is app.rawline.mobile.ui.MobileHomeFragment)
+                val view = home.requireView()
+                repeat(2) { activity.displayFragmentWithId(activity.homeId) }
+                fragments.executePendingTransactions()
+                check(fragments.findFragmentById(R.id.fragment_holder) === home && home.view === view)
+                activity.displayFragmentWithId(R.id.nav_group)
+                fragments.executePendingTransactions()
+                activity.displayFragmentWithId(activity.homeId)
+                fragments.executePendingTransactions()
+                check(fragments.findFragmentById(R.id.fragment_holder) === home && home.view === view && !home.isHidden)
+            }
+            Thread.sleep(450)
+        },
+        "layout-tutorial-frame-timing" to {
+            layout()
+            editor(tutorial = true)
+            fun graphicsStats(command: String): String =
+                android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                    "dumpsys gfxinfo ${context.packageName}$command",
+                )).bufferedReader().use { it.readText() }
+            graphicsStats(" reset")
+            Thread.sleep(4200)
+            val stats = graphicsStats("")
+            File(context.filesDir, "tour-tutorial-frames.txt").writeText(stats)
+            val rendered = Regex("Total frames rendered: (\\d+)").findAll(stats).sumOf { it.groupValues[1].toInt() }
+            check(rendered > 0) { "the tutorial produced no frames" }
+        },
+        "subscription-action-pressed-shape" to {
+            home("groups")
+            instrumentation.runOnMainSync {
+                val density = context.resources.displayMetrics.density
+                fun px(dp: Int) = (dp * density).toInt()
+                val shape = MobilePalette.subscriptionActionShape(context)
+                shape.setBounds(0, 0, px(40), px(48))
+                val bitmap = Bitmap.createBitmap(px(40), px(48), Bitmap.Config.ARGB_8888)
+                val canvas = android.graphics.Canvas(bitmap)
+                shape.draw(canvas)
+                check(android.graphics.Color.alpha(bitmap.getPixel(px(20), px(24))) == 0)
+                bitmap.eraseColor(android.graphics.Color.TRANSPARENT)
+                shape.state = intArrayOf(android.R.attr.state_enabled, android.R.attr.state_pressed)
+                shape.jumpToCurrentState()
+                shape.draw(canvas)
+                val fill = bitmap.getPixel(px(20), px(24))
+                check(android.graphics.Color.alpha(fill) > 0)
+                check(listOf(6 to 24, 33 to 24, 20 to 10, 20 to 37).all { (x, y) ->
+                    bitmap.getPixel(px(x), px(y)) == fill
+                }) { "the press did not fill the whole rounded square" }
+                check(android.graphics.Color.alpha(bitmap.getPixel(px(3), px(7))) == 0) {
+                    "the press was drawn outside the rounded corner"
+                }
+            }
+        },
+        "tun-stack-help-and-reload" to {
+            val previous = DataStore.vpnStack
+            val state = DataStore.serviceState
+            try {
+                DataStore.vpnStack = ""
+                allowBatteryForTour()
+                screen("app.rawline.mobile.ui.settings.TunSettingsFragment")
+                check(centerOf(context.getString(R.string.tun_stack_summary), exact = false) != null)
+                instrumentation.runOnMainSync {
+                    DataStore.serviceState = app.rawline.mobile.bg.BaseService.State.Connected
+                }
+                val title = context.getString(R.string.tun_stack)
+                for ((label, value, description) in listOf(
+                    Triple("System", "system", R.string.tun_stack_system_summary),
+                    Triple("gVisor", "gvisor", R.string.tun_stack_gvisor_summary),
+                    Triple("Mixed", "mixed", R.string.tun_stack_mixed_summary),
+                    Triple(context.getString(R.string.tun_stack_auto), "", R.string.tun_stack_summary),
+                )) {
+                    press(title)
+                    press(label)
+                    check(DataStore.vpnStack == value) { "the selected stack was not saved" }
+                    check(centerOf(context.getString(description), exact = false) != null) { "the selected stack has the wrong help text" }
+                    check(centerOf(context.getString(R.string.need_reload), exact = false) != null) { "no reconnect prompt after stack change" }
+                }
+            } finally {
+                DataStore.serviceState = state
+                DataStore.vpnStack = previous
+            }
+        },
+        "appearance-palette-selection" to {
+            allowBatteryForTour()
+            screen("app.rawline.mobile.ui.settings.AppearanceSettingsFragment")
+            val title = context.getString(R.string.theme)
+            for ((name, style, night) in listOf(
+                Triple("Rawline Pastel Dark", "pastel", 1),
+                Triple("Rawline Pastel Light", "pastel", 2),
+                Triple("Rawline Grey", "grey", 1),
+                Triple("Rawline White", "new", 2),
+                Triple("Rawline OLED", "new", 1),
+            )) {
+                press(title)
+                if (centerOf(name, exact = false) == null) {
+                    val from = checkNotNull(centerOf("Rawline Pastel Dark", exact = false))
+                    val to = checkNotNull(centerOf("Rawline OLED", exact = false))
+                    android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.uiAutomation.executeShellCommand(
+                        "input swipe ${from[0]} ${from[1]} ${to[0]} ${to[1]} 350",
+                    )).use { it.readBytes() }
+                    Thread.sleep(600)
+                }
+                press(name, exact = false)
+                check(DataStore.uiStyle == style && DataStore.nightTheme == night) { "incorrect saved palette for $name" }
+                check(centerOf(name) != null) { "saved palette label $name is missing from settings" }
+            }
+        },
     )
 
     /** The editor's choices back to the defaults, then [hiddenSwitch], [hiddenTiles] and [compact]. */
@@ -508,6 +776,6 @@ class UiTourTest {
         DataStore.selectedProxy = fixtures().second.id
         // A failing step leaves its picture: the instrumentation output does not reach the job log.
         runCatching(go).onFailure { shot("$style$night-%02d-%s-failed".format(index, name)); throw it }
-        shot("$style$night-%02d-%s".format(index, name))
+        shot("$style$night-%02d-%s".format(index, name), contentOnly = name.startsWith("readme-"))
     }
 }

@@ -1,25 +1,25 @@
 {
   "schema": 1,
   "repository": "ttrroyy/RawlineMobile",
-  "tag": "rawline-1.1.5",
-  "commit": "17ab7462eafe52078b750060763be26825495607",
-  "versionName": "1.1.5",
-  "versionIndex": 111,
+  "tag": "rawline-1.1.6",
+  "commit": "03bdb6c27f41d44d7f75dde2fdd8eb1a5c6ef97f",
+  "versionName": "1.1.6",
+  "versionIndex": 112,
   "coreRef": "4d99a914c61cf7315d3de11357bcde01b24b53a4",
   "minSdk": 24,
   "signerSha256": "be9ab67830ce9f33b9ee808a94df999e43bce6acca58949cb8cdb6be1452b005",
   "apk": {
-    "name": "RawlineMobile-1.1.5-arm64-v8a.apk",
-    "size": 160761684,
-    "sha256": "9d36a1c1d62d04fd9c85575c428b55028e2ead898549734e2e5352b4162cf3d5",
-    "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.5/RawlineMobile-1.1.5-arm64-v8a.apk"
+    "name": "RawlineMobile-1.1.6-arm64-v8a.apk",
+    "size": 160766168,
+    "sha256": "4b1664904d3287e73e6e5b245587380c95d1cc442ff1329fdd4f1d78002bb50d",
+    "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.6/RawlineMobile-1.1.6-arm64-v8a.apk"
   },
   "apks": {
     "armeabi-v7a": {
-      "name": "RawlineMobile-1.1.5-armeabi-v7a.apk",
-      "size": 161876410,
-      "sha256": "9e6e0a66de74953b9205de13e22f685bbcfb2ad400ac7612578089baff3a2d50",
-      "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.5/RawlineMobile-1.1.5-armeabi-v7a.apk"
+      "name": "RawlineMobile-1.1.6-armeabi-v7a.apk",
+      "size": 161878042,
+      "sha256": "050fd6497708554329da3f65de460bb564de00a3263496c5000089952791c800",
+      "url": "https://github.com/ttrroyy/RawlineMobile/releases/download/rawline-1.1.6/RawlineMobile-1.1.6-armeabi-v7a.apk"
     }
   }
 }

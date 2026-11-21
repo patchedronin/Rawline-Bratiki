@@ -24,6 +24,7 @@ import androidx.appcompat.widget.SwitchCompat
 import androidx.appcompat.widget.Toolbar
 import androidx.core.view.ViewCompat
 import androidx.core.view.WindowInsetsCompat
+import app.rawline.mobile.Key
 import app.rawline.mobile.R
 import app.rawline.mobile.database.DataStore
 import java.util.Locale
@@ -36,6 +37,9 @@ object MobileHomeLayout {
     var tilesBottom: Boolean
         get() = store.getString("qmobileNewTilesPosition") == "bottom"
         set(value) = store.putString("qmobileNewTilesPosition", position(value))
+    var tilesNearList: Boolean
+        get() = store.getBoolean("qmobileTilesNearList", false)
+        set(value) = store.putBoolean("qmobileTilesNearList", value)
     var extendedTiles: Boolean
         get() = store.getString("qmobileNewTiles") == "on"
         set(value) = store.putString("qmobileNewTiles", if (value) "on" else "off")
@@ -51,6 +55,13 @@ object MobileHomeLayout {
     var chipHidden: Boolean
         get() = store.getBoolean("qmobileChipHidden", false)
         set(value) = store.putBoolean("qmobileChipHidden", value)
+    fun groupHeaderJoined(landscape: Boolean): Boolean =
+        store.getBoolean("qmobileGroupHeaderJoined", !landscape && scrollParts.isNotEmpty())
+
+    fun setGroupHeaderJoined(joined: Boolean) {
+        store.putBoolean("qmobileGroupHeaderJoined", joined)
+    }
+
     /** Between the connection control and the servers, rather than on the control's outer side. */
     var chipNearList: Boolean
         get() = store.getBoolean("qmobileChipNearList", false)
@@ -60,9 +71,10 @@ object MobileHomeLayout {
         get() = store.getString("qmobileScrollParts").orEmpty().split(',').filter { it.isNotEmpty() }.toSet().let { stored ->
             // Joined parts lie together right above the list: the subscription between a joined control and the list
             // scrolls too, and one above a control that stays on the screen does not.
-            if (chipBottom || controlBottom) stored
+            val joined = if (chipBottom || controlBottom) stored
             else if ("control" in stored) if (chipNearList) stored + "chip" else stored
             else if (!chipNearList) stored - "chip" else stored
+            if (chipHidden) joined - "chip" else joined
         }
         set(value) = store.putString("qmobileScrollParts", value.sorted().joinToString(","))
     /** A smaller connect button, or lower switches. */
@@ -76,6 +88,15 @@ object MobileHomeLayout {
     var hiddenSwitch: String
         get() = store.getString("qmobileHiddenSwitch").orEmpty()
         set(value) = store.putString("qmobileHiddenSwitch", value)
+    var proxySwitchFirst: Boolean
+        get() = store.getBoolean("qmobileProxySwitchFirst", false)
+        set(value) = store.putBoolean("qmobileProxySwitchFirst", value)
+
+    fun modeSwitches(): List<Pair<String, Int>> {
+        val modes = listOf(Key.MODE_VPN to R.string.service_mode_vpn, Key.MODE_PROXY to R.string.service_mode_proxy)
+        return if (proxySwitchFirst) modes.asReversed() else modes
+    }
+
     /** The quick tiles of the tile bar, by id; the settings tile always stays. */
     val QUICK_TILES = listOf("mode", "route", "groups", "updates")
     var hiddenTiles: Set<String>

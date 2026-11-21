@@ -996,7 +996,7 @@ index 1b9767d7a3d604ede9d69ade7bdec244134fb792..bf0a197cd45d74d4f4be98b5e2b7efbf
          canvas.drawPath(shape, paint)
          paint.style = Paint.Style.STROKE; paint.strokeWidth = density * .75f; paint.shader = rim
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
-index 48eaaf5bfe464d4e4670b5adcb93e12de1913c25..f3dcae4316ea10a56d78cfdafb0ffb7652d20652 100644
+index b47f3d4ee4c5f86113aac4c515551a6fe43cc43a..7173d537ced60af3d156fb551f2662cfa320b05f 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeArtwork.kt
 @@ -7,6 +7,7 @@ import android.graphics.drawable.Drawable
@@ -1008,7 +1008,7 @@ index 48eaaf5bfe464d4e4670b5adcb93e12de1913c25..f3dcae4316ea10a56d78cfdafb0ffb76
          if(MobileStyle.new) {
              // Soft light for the glass to lie on: true black or white stays the base.
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
-index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb32938cc8 100644
+index 2a98375382d5c1598be22cd4b3fd52ae2df68f59..03da8536b5e23c485eaede0d5b649d95c946fe9b 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobileHomeFragment.kt
 @@ -75,6 +75,11 @@ class MobileHomeFragment : ToolbarFragment() {
@@ -1047,7 +1047,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
      private fun tile(selected: Boolean = false): android.graphics.drawable.Drawable {
          return if(selected) MobilePalette.selectedShape(requireContext(),blue) else MobilePalette.rowShape(requireContext())
      }
-@@ -607,7 +629,8 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -625,7 +647,8 @@ class MobileHomeFragment : ToolbarFragment() {
      fun updateSpeed(down: Long, up: Long) {
          if(!isAdded) return
          lastDown=down;lastUp=up
@@ -1057,7 +1057,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
          sheetDown?.text="↓ "+rateText(down)
          sheetUp?.text="↑ "+rateText(up)
      }
-@@ -726,6 +749,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -746,6 +769,7 @@ class MobileHomeFragment : ToolbarFragment() {
          if(nativeReceiverRegistered) { requireContext().unregisterReceiver(nativeStatusReceiver);nativeReceiverRegistered=false }
          groupReorder?.cancel();groupReorder=null;profileReorders.values.forEach { it.cancel() };profileReorders.clear();reordering=false
          groupChip = null; groupTabs = null; sheetDown = null; sheetUp = null
@@ -1065,7 +1065,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
          geoBanner = null; updatesTile = null; geoStatus = null; geoProgress = null; geoCheck = null
          GroupRepo.removeListener(groupListener)
          observer?.let { SagerDatabase.instance.invalidationTracker.removeObserver(it) }
-@@ -898,6 +922,10 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -920,6 +944,10 @@ class MobileHomeFragment : ToolbarFragment() {
                      }
                      addView(groupChip,LinearLayout.LayoutParams(0,dp(48),1f).apply { marginEnd=dp(8) })
                      addView(addTile,LinearLayout.LayoutParams(dp(48),dp(48)))
@@ -1076,7 +1076,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                  }
                  val chipNear=chipNearList()
                  if(!chipBottom && !chipNear) chipRow?.let { side.addView(it,LinearLayout.LayoutParams(-1,-2).apply { topMargin=dp(14) }) }
-@@ -955,14 +983,17 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -983,14 +1011,17 @@ class MobileHomeFragment : ToolbarFragment() {
                  } else {
                  power = action("") { if(!powerCovered()) { host().toggleService() } }.apply {
                      contentDescription = getString(R.string.qmobile_connect)
@@ -1096,20 +1096,22 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                              val reach=MobileOrbArtwork.radius(disc)*1.35f
                              val dx=event.x-width/2f; val dy=event.y-MobileOrbArtwork.centerY(disc)
                              if(dx*dx+dy*dy>reach*reach) return@setOnTouchListener true
-@@ -988,16 +1019,21 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1016,17 +1047,22 @@ class MobileHomeFragment : ToolbarFragment() {
                  run {
                      // A smaller button right under the subscription: the servers and the subscription's actions keep the screen.
                      // The view spans the row and is 16 dp taller than the disc: the subscription and server line has the width.
 -                    val orb=MobileHomeLayout.orbSize(true)
+-                    val button = power
 +                    val orb=if (minimalHome) 340 else MobileHomeLayout.orbSize(true)
-                     val artwork=power?.background as? MobileOrbArtwork
++                    val button=power
+                     val artwork=button?.background as? MobileOrbArtwork
                      artwork?.discSize=dp(orb)
--                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
-+                    centre.addView(power, FrameLayout.LayoutParams(-1, dp(orb+16), (if(minimalHome) Gravity.CENTER else Gravity.TOP) or Gravity.CENTER_HORIZONTAL))
+-                    centre.addView(button, FrameLayout.LayoutParams(-1, dp(orb+16), Gravity.TOP or Gravity.CENTER_HORIZONTAL))
++                    centre.addView(button, FrameLayout.LayoutParams(-1, dp(orb+16), (if(minimalHome) Gravity.CENTER else Gravity.TOP) or Gravity.CENTER_HORIZONTAL))
                      if(dockBottom) {
                          centre.background=MobileDockGlass(MobilePalette.cardDp*resources.displayMetrics.density,MobileOrbArtwork.centerY(dp(orb)),MobileOrbArtwork.radius(dp(orb))*1.26f,dp(104*orb/190).toFloat())
                          // The check and the speed hold the dock's lower corners: the line keeps between them.
-                         power?.addOnLayoutChangeListener { view,_,_,_,_,_,_,_,_ -> artwork?.textRoom=(view.width-2*dp(14+92+6)).toFloat() }
+                         button?.addOnLayoutChangeListener { view,_,_,_,_,_,_,_,_ -> artwork?.textRoom=(view.width-2*dp(14+92+6)).toFloat() }
                      }
 -                    controlParent.addView(centre, LinearLayout.LayoutParams(-1, dp(if(dockBottom) orb+20 else orb+16)).apply { topMargin=dp(4) })
 +                    if (minimalHome && !dockBottom) {
@@ -1120,8 +1122,8 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
 +                    }
                      // The subscription and the server on two lines when one is too narrow for them: the button grows by that line.
                      artwork?.linesChanged={ lines -> centre.post {
-                         val extra=if(lines==2) dp(16) else 0
-@@ -1033,6 +1069,7 @@ class MobileHomeFragment : ToolbarFragment() {
+                         if (button == null || button !== power || !centre.isAttachedToWindow) return@post
+@@ -1063,6 +1099,7 @@ class MobileHomeFragment : ToolbarFragment() {
                      else side.addView(statusRow,LinearLayout.LayoutParams(-1,dp(34)))
                      }
                  }
@@ -1129,7 +1131,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                  updateState()
                  val imports = LinearLayout(requireContext())
                  fun importButton(label: String, icon: Int, callback: () -> Unit) = LinearLayout(requireContext()).apply {
-@@ -1088,7 +1125,8 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1119,7 +1156,8 @@ class MobileHomeFragment : ToolbarFragment() {
                  run {
                      val area=FrameLayout(requireContext()).also { serverDropArea=it }
                      area.addView(serverPanel,FrameLayout.LayoutParams(-1,-2))
@@ -1139,7 +1141,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                      val tabs=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL;setPadding(0,dp(6),0,0) }
                      fun indicator(left: Boolean)=ImageView(requireContext()).apply {
                          setImageResource(R.drawable.ic_mobile_chevron)
-@@ -1208,6 +1246,23 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1243,6 +1281,23 @@ class MobileHomeFragment : ToolbarFragment() {
              }
              pickerGroups=groups.map { it.first }
              groupChip?.text=pickerGroups.firstOrNull { it.id==focusedGroup }?.displayName().orEmpty()
@@ -1163,43 +1165,67 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
              val serverColumn=serverRows ?: return@launch
              if(risenGroup!=focusedGroup) {
                  // Only a change of subscription rises; the first render is simply there.
-@@ -1285,10 +1340,12 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1320,22 +1375,24 @@ class MobileHomeFragment : ToolbarFragment() {
                  }
                  val heading = LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,0,0); isFocusable=true }
                  heading.addView(arrow,LinearLayout.LayoutParams(dp(20),dp(20)))
 -                val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
--                names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=3; ellipsize=android.text.TextUtils.TruncateAt.END })
+-                names.addView(text(group.displayName(), 17f).apply {
+-                    setPadding(0, 0, 0, 0)
+-                    ellipsize = android.text.TextUtils.TruncateAt.END
+-                    if (text.none(Char::isWhitespace)) {
+-                        maxLines = 1
+-                        androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
+-                            this, 15, 17, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
+-                        )
+-                    } else {
+-                        maxLines = 3
+-                        breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
+-                    }
+-                })
 -                if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
 -                heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
 +                if (!minimalHome) {
 +                    val names=LinearLayout(requireContext()).apply { orientation=LinearLayout.VERTICAL; setPadding(dp(10),dp(8),dp(4),dp(8)) }
-+                    names.addView(text(group.displayName(),17f).apply { setPadding(0,0,0,0); maxLines=3; ellipsize=android.text.TextUtils.TruncateAt.END })
++                    names.addView(text(group.displayName(), 17f).apply {
++                        setPadding(0, 0, 0, 0)
++                        ellipsize = android.text.TextUtils.TruncateAt.END
++                        if (text.none(Char::isWhitespace)) {
++                            maxLines = 1
++                            androidx.core.widget.TextViewCompat.setAutoSizeTextTypeUniformWithConfiguration(
++                                this, 15, 17, 1, android.util.TypedValue.COMPLEX_UNIT_SP,
++                            )
++                        } else {
++                            maxLines = 3
++                            breakStrategy = android.text.Layout.BREAK_STRATEGY_BALANCED
++                        }
++                    })
 +                    if(group.isSubscription && group.subLastUpdate>0) names.addView(text(java.text.DateFormat.getDateTimeInstance(java.text.DateFormat.SHORT,java.text.DateFormat.SHORT).format(java.util.Date(group.subLastUpdate*1000)),10f,muted).apply { setPadding(0,dp(3),0,0) })
 +                    heading.addView(names,LinearLayout.LayoutParams(0,-2,1f))
 +                }
                  run {
-                     MobileSubscriptionSwipe.bind(heading, { groupPicker() }, { editGroup(group,true) },
-                         { host().displayFragmentWithId(R.id.nav_group) }) { direction ->
-@@ -1297,17 +1354,19 @@ class MobileHomeFragment : ToolbarFragment() {
+                     val chipHidden = MobileHomeLayout.chipHidden
+                     MobileSubscriptionSwipe.bind(
+@@ -1349,17 +1406,19 @@ class MobileHomeFragment : ToolbarFragment() {
                          if (index >= 0) siblings.getOrNull(index + direction)?.let { selectGroup(it.id) }
                      }
                  }
 -                title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
--                if (MobileHomeLayout.chipHidden) title.addView(iconAction(R.drawable.ic_mobile_add,getString(R.string.qmobile_add)) { addMenu(title) },LinearLayout.LayoutParams(dp(40),dp(48)))
--                if (group.isSubscription) title.addView(iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this },LinearLayout.LayoutParams(dp(40),dp(48)))
--                title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
+-                if (MobileHomeLayout.chipHidden) title.addView(subscriptionAction(R.drawable.ic_mobile_add,getString(R.string.qmobile_add)) { addMenu(title) },LinearLayout.LayoutParams(dp(40),dp(48)))
+-                if (group.isSubscription) title.addView(subscriptionAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this },LinearLayout.LayoutParams(dp(40),dp(48)))
+-                title.addView(subscriptionAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
 -                lateinit var more: ImageButton
--                more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
--                title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
+-                more=subscriptionAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
+-                title.addView(more,LinearLayout.LayoutParams(dp(40),dp(48)))
 -                head.addView(title)
 +                if (!minimalHome) {
-+                    val refresh = if (group.isSubscription) iconAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
++                    val refresh = if (group.isSubscription) subscriptionAction(R.drawable.ic_mobile_refresh,getString(R.string.qmobile_refresh)) { SubscriptionClient.refreshGroup(group.id,false) }.apply { isEnabled=!SubscriptionClient.states.value.containsKey(group.id); alpha=1f;nextRefreshButtons[group.id]=this } else null
 +                    lateinit var more: ImageButton
-+                    more=iconAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
++                    more=subscriptionAction(R.drawable.ic_mobile_more,getString(R.string.qmobile_more)) { groupMenu(group,more) }
 +                    title.addView(heading,LinearLayout.LayoutParams(0,-2,1f))
 +                    refresh?.let { title.addView(it, LinearLayout.LayoutParams(dp(40), dp(48))) }
-+                    title.addView(iconAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
-+                    title.addView(more,LinearLayout.LayoutParams(dp(44),dp(48)))
++                    title.addView(subscriptionAction(R.drawable.ic_mobile_test,getString(R.string.qmobile_tests)) { testMenu(profiles.map { it.id }.toLongArray(),group.displayName(),group.id,true) },LinearLayout.LayoutParams(dp(40),dp(48)))
++                    title.addView(more,LinearLayout.LayoutParams(dp(40),dp(48)))
 +                    head.addView(title)
 +                }
                  // Which routing this subscription's servers run with, one line above its card and notes.
@@ -1209,7 +1235,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                      // Wraps rather than cutting the Xray part of the label off.
                      maxLines=3
                      setPadding(dp(8),dp(4),dp(10),dp(4));compoundDrawablePadding=dp(6);gravity=Gravity.CENTER_VERTICAL
-@@ -1316,7 +1375,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1368,7 +1427,7 @@ class MobileHomeFragment : ToolbarFragment() {
                      contentDescription=signature.route
                      isFocusable=true;setOnClickListener { routePicker() };MobileFeedback.apply(this,radius=12f)
                  },LinearLayout.LayoutParams(-2,-2).apply { marginStart=dp(6);bottomMargin=dp(4) })
@@ -1218,7 +1244,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
                      val quota=group.subInfo
                      val traffic=LinearLayout(requireContext()).apply { gravity=Gravity.CENTER_VERTICAL; setPadding(dp(12),0,dp(12),dp(8)) }
                      traffic.addView(iconAction(R.drawable.ic_mobile_info,getString(R.string.qmobile_subscription_info)) {
-@@ -1474,6 +1533,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1526,6 +1585,7 @@ class MobileHomeFragment : ToolbarFragment() {
              updateSubscriptionButtons()
              updateLatencies()
              updateState()
@@ -1226,7 +1252,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
              // Commit only a completed render: a cancelled page build must be retried.
              renderedStructure=structure
              if (focusConnectOnRender && resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_TYPE_MASK == android.content.res.Configuration.UI_MODE_TYPE_TELEVISION) {
-@@ -1518,7 +1578,7 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1570,7 +1630,7 @@ class MobileHomeFragment : ToolbarFragment() {
          }
          power?.isEnabled = state != app.rawline.mobile.bg.BaseService.State.Stopping
          // The row under the button holds nothing while disconnected: it gives its room to the list; the dock's speeds keep theirs.
@@ -1235,7 +1261,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
          if(!state.connected) { lastDown=0L;lastUp=0L }
          val pendingMode = host().modeSwitch.pendingMode
          modeSwitches.forEach { (mode,switch) ->
-@@ -1547,7 +1607,8 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1599,7 +1659,8 @@ class MobileHomeFragment : ToolbarFragment() {
          power?.setTextColor(muted)
          (power?.background as? MobilePowerArtwork)?.connected=state.connected
          (power?.background as? MobilePowerArtwork)?.connecting=state==app.rawline.mobile.bg.BaseService.State.Connecting
@@ -1245,7 +1271,7 @@ index 88af033d914cf0fc0c064057b7a2e27dc8e692ef..342f3a18fdac580a074d689998ec7cfb
          power?.apply {
              // The cell in a removed switch's place keeps its own alignment.
              if(tag!=SWITCH_CELL) { textSize=13f;gravity=Gravity.CENTER;setPadding(0,if(background is MobilePowerArtwork) dp(75*MobileHomeLayout.orbSize(false)/188) else dp(8),0,0) }
-@@ -1574,9 +1635,11 @@ class MobileHomeFragment : ToolbarFragment() {
+@@ -1626,9 +1687,11 @@ class MobileHomeFragment : ToolbarFragment() {
                  workersText=snapshot?.takeIf { it.total>0 && !testing }?.let { "${it.active}/${it.total}" }.orEmpty()
                  if(this is MobileOrbArtwork) {
                      // The selected subscription and server, connected or not, on their own line under the button.
@@ -1274,10 +1300,10 @@ index e860f56dd1873496e8dac7cf432dd5fa8968a49a..1ed309a8fbb4b6b2cb67bb741cfb5791
      private val font = runCatching { ResourcesCompat.getFont(context, R.font.geologica) }.getOrNull() ?: Typeface.DEFAULT
      private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
-index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb46e26877d 100644
+index 5abf33e622832016b837c6e131fdfba2574b6e29..3c09bbcfbf32606420e3f8184c703017710ee1e1 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/MobilePalette.kt
-@@ -14,45 +14,81 @@ object MobileStyle {
+@@ -15,11 +15,48 @@ object MobileStyle {
      const val modern = true
  }
  
@@ -1318,15 +1344,16 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +
  object MobilePalette {
 +    private val custom get() = MobileThemes.current
-     /** Every night is OLED black, except Pastel's, which stays plum. */
-     val oled get() = Theme.usingNightMode() && !MobileStyle.pastel
++    /** Every night is OLED black, except Pastel's, which stays plum. */
+     val oled get() = Theme.usingNightMode() && !MobileStyle.pastel && !MobileStyle.grey
      val light get() = !oled && !Theme.usingNightMode()
      private val lilac = Color.rgb(0x7C, 0x6B, 0xF2)
 -    val background get() = when {
 +    val background get() = custom?.background ?: when {
          MobileStyle.pastel && light -> Color.rgb(255, 228, 214)
          MobileStyle.pastel -> Color.rgb(22, 20, 31)
-         light -> Color.WHITE
+         MobileStyle.grey -> Color.rgb(35, 37, 41)
+@@ -27,28 +64,28 @@ object MobilePalette {
          else -> Color.BLACK
      }
      /** Translucent in the new style: anything that has to hide what is under it uses [solid] or [frosted]. */
@@ -1341,6 +1368,7 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +    val solid get() = custom?.solid ?: when {
          MobileStyle.pastel && light -> Color.rgb(255, 247, 252)
          MobileStyle.pastel -> Color.rgb(36, 31, 51)
+         MobileStyle.grey -> Color.rgb(45, 48, 53)
          light -> Color.rgb(243, 243, 246)
          else -> Color.rgb(21, 21, 24)
      }
@@ -1350,6 +1378,7 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +    val text get() = custom?.text ?: when {
          MobileStyle.pastel && light -> Color.rgb(0x1B, 0x1C, 0x2A)
          MobileStyle.pastel -> Color.rgb(0xF4, 0xF2, 0xFA)
+         MobileStyle.grey -> Color.rgb(241, 242, 244)
          light -> Color.rgb(10, 10, 11)
          else -> Color.rgb(245, 245, 247)
      }
@@ -1357,7 +1386,8 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +    val muted get() = custom?.muted ?: when {
          MobileStyle.pastel && light -> Color.rgb(110, 108, 136)
          MobileStyle.pastel -> Color.rgb(176, 170, 198)
-         light -> Color.rgb(105, 105, 112)
+         MobileStyle.grey -> Color.rgb(173, 177, 184)
+@@ -56,7 +93,7 @@ object MobilePalette {
          else -> Color.rgb(142, 142, 150)
      }
      /** The dark field inside a card; on true black a lighter one, or it would vanish. */
@@ -1366,7 +1396,7 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
          MobileStyle.pastel && light -> Color.argb(18, 124, 107, 242)
          MobileStyle.pastel -> Color.argb(28, 255, 255, 255)
          light -> Color.argb(16, 0, 0, 0)
-@@ -61,16 +97,16 @@ object MobilePalette {
+@@ -65,9 +102,9 @@ object MobilePalette {
      /** The editor's small round buttons: solid, a step lighter (or darker) than the screen, in either theme. */
      val badge get() = androidx.core.graphics.ColorUtils.blendARGB(background, text, if (light) .09f else .2f)
      /** Corner radii in dp. */
@@ -1376,9 +1406,10 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +    val rowDp get() = custom?.rowDp ?: 20
 +    val cardDp get() = custom?.cardDp ?: 28
 +    val wellDp get() = custom?.wellDp ?: 18
+     const val subscriptionActionDp = 10
      /** A screen's own colour: the screens let the backdrop through. */
      val screen = Color.TRANSPARENT
-     /** Over content that must stay readable: notices, dialogs, sheets. */
+@@ -75,7 +112,7 @@ object MobilePalette {
      /** The blur behind sheets and dialogs: enough to lift them off the screen, while what is behind stays recognisable. */
      const val BLUR_DP = 20
      val windowDim get() = if (light) .35f else .6f
@@ -1386,8 +1417,8 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
 +    val frosted get() = custom?.frosted ?: when {
          MobileStyle.pastel && light -> Color.argb(248, 255, 250, 252)
          MobileStyle.pastel -> Color.argb(248, 24, 20, 36)
-         light -> Color.argb(248, 250, 250, 252)
-@@ -78,7 +114,7 @@ object MobilePalette {
+         MobileStyle.grey -> Color.argb(248, 35, 37, 41)
+@@ -84,7 +121,7 @@ object MobilePalette {
      }
      val outline get() = androidx.core.graphics.ColorUtils.setAlphaComponent(muted,55)
      @Suppress("UNUSED_PARAMETER")
@@ -1396,7 +1427,7 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
  
      /** A row or button: every list row and action in the app. */
      fun rowShape(context: Context): android.graphics.drawable.Drawable = shape(context, rowDp)
-@@ -88,7 +124,7 @@ object MobilePalette {
+@@ -111,7 +148,7 @@ object MobilePalette {
      fun selectedShape(context: Context, color: Int = accent(context)): android.graphics.drawable.Drawable {
          val density = context.resources.displayMetrics.density
          // The row's own plate a step towards lilac, with a lilac edge: set apart from the rows around it, not a blue wash.
@@ -1405,7 +1436,7 @@ index 5bd220caf45d566d8869db55925dcee20c2ede80..be8e063621a84d7f0f373f17d5137fb4
              setColor(androidx.core.graphics.ColorUtils.blendARGB(if (light) Color.WHITE else Color.rgb(42, 36, 62), lilac, if (light) .12f else .22f))
              setStroke((1.5f * density).toInt().coerceAtLeast(1), androidx.core.graphics.ColorUtils.setAlphaComponent(lilac, if (light) 200 else 230))
              cornerRadius = rowDp * density
-@@ -106,7 +142,7 @@ object MobilePalette {
+@@ -129,7 +166,7 @@ object MobilePalette {
      }
      private fun shape(context: Context, radius: Int): android.graphics.drawable.Drawable {
          val density = context.resources.displayMetrics.density
@@ -1436,7 +1467,7 @@ index 0000000000000000000000000000000000000000..901457a274d83ac680e8cf720ed5b589
 +    val snow get() = DataStore.configurationStore.getInt(SNOW, 75).coerceIn(0, 150) / 100f
 +}
 diff --git a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
-index 31294ee18831a1770f820ee2819370f4cbbb516f..2830c6e3c9bd325ba50f207cf13b22698a427e43 100644
+index ea4084bf880007f6ecb6045d1319d4f76a82878f..f330401711385c2a75c51ce15d9e789af7a88dff 100644
 --- a/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
 +++ b/app/src/main/java/io/nekohasekai/sagernet/ui/settings/GeneralSettingsScreens.kt
 @@ -6,6 +6,8 @@ import android.net.Uri
@@ -1549,11 +1580,11 @@ index 0000000000000000000000000000000000000000..894673c6da99ba5c6f778a80ab893ea3
 +    <string-array name="local_power_skins"><item>Люк</item><item>Двор с ТЭЦ</item></string-array>
 +</resources>
 diff --git a/app/src/main/res/values-ru/strings.xml b/app/src/main/res/values-ru/strings.xml
-index b4a8a5fa64bfce3efd9a09771fb74e9eaa31b78d..ace3ae80f0dec7ef56e628eacb7862c0c9492fb0 100644
+index e40c48bc4dd987aaa9ddaada5db265c722d48b04..c5f1b4f0e026d29b5195ea6d33be04314409d2d2 100644
 --- a/app/src/main/res/values-ru/strings.xml
 +++ b/app/src/main/res/values-ru/strings.xml
-@@ -2700,4 +2700,9 @@
-     <string name="tun_stack_summary">Авто сохраняет прежний выбор ядра. Изменения применяются после переподключения.</string>
+@@ -2703,4 +2703,9 @@
+     <string name="tun_stack_mixed_summary">Использует System для TCP и gVisor для UDP.</string>
      <string name="xray_geo_auto_update">Обновлять геоданные автоматически</string>
      <string name="xray_geo_auto_update_sum">Проверять раз в сутки и загружать geoip.dat и geosite.dat старше суток. При ошибке загрузки сохраняются прежние файлы.</string>
 +    <string name="qmobile_theme_file">Тема из файла</string>
@@ -1578,11 +1609,11 @@ index 0000000000000000000000000000000000000000..ff597e34f2db454b01b3ede9b5c8d38c
 +    <string-array name="local_power_skin_values"><item>hatch</item><item>courtyard</item></string-array>
 +</resources>
 diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
-index 9fe5d3234a3edfd66f715f1d498ca3c83dc5c4f2..e62dc93eef051b2f1f877321b04b6cd5cda5e3db 100644
+index 5f9a1b1b12ccb7923e4a49d610ba56674e9aab21..14f6ca1a79bc368f68b4d607ce42b3c988397605 100644
 --- a/app/src/main/res/values/strings.xml
 +++ b/app/src/main/res/values/strings.xml
-@@ -2827,4 +2827,9 @@
-     <string name="tun_stack_summary">Auto keeps the current core default. Reconnect to apply changes.</string>
+@@ -2830,4 +2830,9 @@
+     <string name="tun_stack_mixed_summary">Uses System for TCP and gVisor for UDP.</string>
      <string name="xray_geo_auto_update">Update geodata automatically</string>
      <string name="xray_geo_auto_update_sum">Check daily and download geoip.dat and geosite.dat when they are more than a day old. If a download fails, keep the previous files.</string>
 +    <string name="qmobile_theme_file">Theme from file</string>

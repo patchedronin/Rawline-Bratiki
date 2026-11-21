@@ -813,10 +813,12 @@ class ConfigGenerator @JvmOverloads constructor(
         class PlannedMember(val member: SelectorMember, val hopIds: List<Long>, val bridges: MemberBridges, val origin: HopOrigin)
 
         // One member the core rejects fails the whole group's start, so drop it instead.
+        val existingCarrierIds = state.carrierPlans.keys.toSet()
         val rejected = rejectedMembers(chains, reads, plan.build)
         val plannedMembers = ArrayList<PlannedMember>()
+        val qwdttSessions = mutableMapOf<List<String>, Long>()
         var bridgeCount = 0
-        for (id in plan.build) {
+        for (id in plan.build.sortedBy { it != selector.pinnedID }) {
             if (id in rejected) continue
             val member = plan.member(id) ?: continue
             // each member goes through the landing / front proxy of its own group
@@ -826,11 +828,22 @@ class ConfigGenerator @JvmOverloads constructor(
             if (memberGroup.landingProxyId > 0) hopIds.add(memberGroup.landingProxyId)
             hopIds.add(id)
             if (memberGroup.frontProxyId > 0) hopIds.add(memberGroup.frontProxyId)
+            // Separate profiles with the same qWDTT device and peer cannot run together.
+            val sessions = hopIds.mapNotNull { hop ->
+                val profile = reads.get(hop) as? app.rawline.mobile.outbound.types.Qwdtt
+                profile?.takeIf { it.carrierKind == app.rawline.mobile.bg.carrier.CarrierKind.QWDTT }
+                    ?.probeSessionKey()?.drop(1)?.let { it to hop }
+            }.distinct()
+            if (sessions.map { it.first }.toSet().size != sessions.size ||
+                sessions.any { (key, hop) -> qwdttSessions[key]?.let { it != hop } == true }) continue
+            qwdttSessions.putAll(sessions)
             val bridges = chains.bridgesFor(hopIds)
             bridgeCount += bridges.count
             val origin = HopOrigin(selector, listOf(ChainGroup(memberGroup.name, memberGroup.landingProxyId, memberGroup.frontProxyId)))
             plannedMembers.add(PlannedMember(member, hopIds, bridges, origin))
         }
+        // Preliminary validation may have prepared bridges for candidates that will never be emitted.
+        state.carrierPlans.keys.retainAll(existingCarrierIds + plannedMembers.flatMap { it.hopIds })
         // One batch for every member: reserving per member can deal the same port twice.
         val bridgePorts = state.ports.reserve(bridgeCount)
         var portIdx = 0
@@ -1377,7 +1390,12 @@ class ConfigGenerator @JvmOverloads constructor(
         }
         val routeObj = JsonObject()
         routeObj["rules"] = if (settings.blockQuic && !state.forTest) guardQuic(rules, quicGuardFrom, finalTag != Tags.DIRECT) else rules
-        routeObj["rule_set"] = buildRuleSetArray(state)
+        val ruleSetDetour = when {
+            settings.deferRuleSets -> Tags.PROXY
+            settings.enableWarp && settings.warpMode == "masque" && finalTag == Tags.PROXY -> Tags.WARP_BYPASS
+            else -> ""
+        }
+        routeObj["rule_set"] = buildRuleSetArray(state, ruleSetDetour)
         routeObj["final"] = finalTag
         if (settings.trafficStats || (settings.blockUnownedTun && settings.vpnMode) ||
             state.prerequisites.perAppDns.isNotEmpty()) routeObj["find_process"] = true
@@ -1436,29 +1454,27 @@ class ConfigGenerator @JvmOverloads constructor(
     private fun adblockRule(): JsonObject = jsonObjectOf("action" to "reject", "rule_set" to JsonArray.of(RuleSets.ADBLOCK_TAG))
 
     /**
-     * buildRuleSetArray (:1916-1955): the profile's sets, then adblock; always present. No update_interval or
-     * http_client, so the core refreshes each set every 24 h through route.final, as on the desktop. A deferred start
-     * ([GeneratorSettings.deferRuleSets], Android-only) adds an empty initial_path and a download through `proxy`.
+     * MASQUE becomes ready after the router loads uncached rule sets, so initial downloads must use its upstream.
      */
-    private fun buildRuleSetArray(state: BuildState): JsonArray {
+    private fun buildRuleSetArray(state: BuildState, downloadDetour: String): JsonArray {
         val out = JsonArray()
         val sets = state.prerequisites.ruleSets
-        for ((tag, url) in sets) out.add(remoteRuleSet(tag, url))
+        for ((tag, url) in sets) out.add(remoteRuleSet(tag, url, downloadDetour))
         if (settings.adblockEnable && !sets.containsKey(RuleSets.ADBLOCK_TAG)) {
-            out.add(remoteRuleSet(RuleSets.ADBLOCK_TAG, RuleSets.mirrorLink(RuleSets.ADBLOCK_URL, settings.rulesetMirror)))
+            out.add(remoteRuleSet(RuleSets.ADBLOCK_TAG, RuleSets.mirrorLink(RuleSets.ADBLOCK_URL, settings.rulesetMirror), downloadDetour))
         }
         return out
     }
 
-    private fun remoteRuleSet(tag: String, url: String): JsonObject {
+    private fun remoteRuleSet(tag: String, url: String, downloadDetour: String): JsonObject {
         if (url.startsWith("file://")) return jsonObjectOf("type" to "local", "tag" to tag, "format" to "binary", "path" to url.removePrefix("file://"))
         val ruleSet = jsonObjectOf("type" to "remote", "tag" to tag, "format" to "binary", "url" to url)
         if (settings.deferRuleSets) {
             // StartContext reads initial_path only without a cached copy, instead of failing the start on a fetch
             // (rule_set_remote.go:97-140); the updater then fetches such a set right away (rule_set_updater.go:45-50).
             ruleSet["initial_path"] = EMPTY_RULE_SET_PATH
-            ruleSet["http_client"] = jsonObjectOf("detour" to Tags.PROXY)
         }
+        if (downloadDetour.isNotEmpty()) ruleSet["http_client"] = jsonObjectOf("detour" to downloadDetour)
         return ruleSet
     }
 
